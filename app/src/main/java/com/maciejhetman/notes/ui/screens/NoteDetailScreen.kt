@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -83,7 +86,7 @@ import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteDetailScreen(
     viewModel: NoteDetailViewModel,
@@ -220,6 +223,23 @@ fun NoteDetailScreen(
             // ── Content — live markdown via VisualTransformation ───────────
             var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
             val density = LocalDensity.current
+            val bringIntoViewRequester = remember { BringIntoViewRequester() }
+
+            LaunchedEffect(contentFieldValue.selection, textLayoutResult) {
+                val layoutResult = textLayoutResult ?: return@LaunchedEffect
+                val selection = contentFieldValue.selection
+                val cursorStart = selection.start
+                if (cursorStart >= 0 && cursorStart <= contentFieldValue.text.length) {
+                    if (cursorStart <= layoutResult.layoutInput.text.length) {
+                        val cursorRect = layoutResult.getCursorRect(cursorStart)
+                        val extraSpacingPx = with(density) { 100.dp.toPx() }
+                        val extendedRect = cursorRect.copy(
+                            bottom = cursorRect.bottom + extraSpacingPx
+                        )
+                        bringIntoViewRequester.bringIntoView(extendedRect)
+                    }
+                }
+            }
 
             BasicTextField(
                 value = contentFieldValue,
@@ -264,6 +284,7 @@ fun NoteDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .bringIntoViewRequester(bringIntoViewRequester)
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
