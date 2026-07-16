@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 
 /**
@@ -41,6 +42,11 @@ class MarkdownVisualTransformation(
             val lineEnd = (offset + line.length).coerceAtMost(text.length)
 
             when {
+                // H4 — must check before H3, H2, H1
+                line.startsWith("#### ") -> {
+                    addStyle(SpanStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold), offset, lineEnd)
+                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 11.sp), offset, (offset + 5).coerceAtMost(lineEnd))
+                }
                 // H3 — must check before H2 and H1
                 line.startsWith("### ") -> {
                     addStyle(SpanStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold), offset, lineEnd)
@@ -63,9 +69,13 @@ class MarkdownVisualTransformation(
                     // Make the > marker vibrant and non-italic
                     addStyle(SpanStyle(color = primaryColor, fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold), offset, (offset + 2).coerceAtMost(lineEnd))
                 }
+                // Todo list
+                line.startsWith("- [ ] ") || line.startsWith("- [x] ") || line.startsWith("- [X] ") -> {
+                    addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset, (offset + 6).coerceAtMost(lineEnd))
+                }
                 // Unordered list bullet
                 line.startsWith("- ") || line.startsWith("* ") -> {
-                    addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset, (offset + 1).coerceAtMost(lineEnd))
+                    addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset, (offset + 2).coerceAtMost(lineEnd))
                 }
                 // Ordered list number
                 line.matches(Regex("^\\d+\\.\\s.*")) -> {
@@ -132,6 +142,16 @@ class MarkdownVisualTransformation(
         Regex("_([^_\n]+?)_").findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontStyle = FontStyle.Italic), match.range.first, match.range.last + 1)
+            }
+        }
+
+        // Underline <u>text</u>
+        Regex("<u>(.*?)</u>").findAll(text).forEach { match ->
+            if (!match.range.isInsideCode()) {
+                addStyle(SpanStyle(textDecoration = TextDecoration.Underline), match.range.first, match.range.last + 1)
+                // Dim the tags
+                addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), match.range.first, match.range.first + 3)
+                addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), match.range.last - 3, match.range.last + 1)
             }
         }
     }
