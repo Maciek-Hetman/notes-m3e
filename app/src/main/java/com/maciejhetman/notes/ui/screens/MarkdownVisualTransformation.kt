@@ -26,10 +26,13 @@ class MarkdownVisualTransformation(
 
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
+        // Replace list hyphens/asterisks with a dot, preserving length
+        val modifiedRaw = raw.replace(Regex("(?m)^(\\s*)[-*] (?!(\\[[ xX]\\]))"), "$1• ")
+
         val annotated = buildAnnotatedString {
-            append(raw)
-            applyBlockStyles(raw)
-            applyInlineStyles(raw)
+            append(modifiedRaw)
+            applyBlockStyles(modifiedRaw)
+            applyInlineStyles(modifiedRaw)
         }
         return TransformedText(annotated, OffsetMapping.Identity)
     }
@@ -70,12 +73,16 @@ class MarkdownVisualTransformation(
                     addStyle(SpanStyle(color = primaryColor, fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold), offset, (offset + 2).coerceAtMost(lineEnd))
                 }
                 // Todo list
-                line.startsWith("- [ ] ") || line.startsWith("- [x] ") || line.startsWith("- [X] ") -> {
-                    addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset, (offset + 6).coerceAtMost(lineEnd))
+                line.trimStart().let { it.startsWith("- [ ] ") || it.startsWith("- [x] ") || it.startsWith("- [X] ") } -> {
+                    val spaceCount = line.length - line.trimStart().length
+                    // Make the "- [ ] " text completely transparent so we can overlay a stock Checkbox icon
+                    // letterSpacing = 2.sp gives it a bit more width to ensure there's enough padding on the right before the text starts
+                    addStyle(SpanStyle(color = Color.Transparent, letterSpacing = 2.sp), offset + spaceCount, (offset + spaceCount + 6).coerceAtMost(lineEnd))
                 }
                 // Unordered list bullet
-                line.startsWith("- ") || line.startsWith("* ") -> {
-                    addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset, (offset + 2).coerceAtMost(lineEnd))
+                line.trimStart().startsWith("• ") -> {
+                    val spaceCount = line.length - line.trimStart().length
+                    addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset + spaceCount, (offset + spaceCount + 2).coerceAtMost(lineEnd))
                 }
                 // Ordered list number
                 line.matches(Regex("^\\d+\\.\\s.*")) -> {

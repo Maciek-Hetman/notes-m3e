@@ -33,6 +33,8 @@ class NoteDetailViewModel(
                         id = note.id,
                         title = note.title,
                         content = note.content,
+                        createdAt = note.createdAt,
+                        modifiedAt = note.modifiedAt,
                         isNew = false,
                         savedState = SavedState.Saved
                     )
@@ -77,7 +79,8 @@ class NoteDetailViewModel(
             id = state.id ?: 0,
             title = state.title,
             content = state.content,
-            timestamp = System.currentTimeMillis()
+            createdAt = state.createdAt,
+            modifiedAt = System.currentTimeMillis()
         )
         if (state.isNew) {
             val newId = repository.insertNote(note)
@@ -110,6 +113,8 @@ data class NoteDetailUiState(
     val id: Long? = null,
     val title: String = "",
     val content: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val modifiedAt: Long = System.currentTimeMillis(),
     val isNew: Boolean = true,
     val savedState: SavedState = SavedState.Idle
 )

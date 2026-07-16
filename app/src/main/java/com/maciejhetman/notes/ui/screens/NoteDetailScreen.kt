@@ -25,6 +25,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
@@ -66,9 +68,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
@@ -82,7 +90,12 @@ fun NoteDetailScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    val dateFormatter = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()) }
+    val timeFormatter = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()) }
+    val createdStr = remember(uiState.createdAt) { dateFormatter.format(java.util.Date(uiState.createdAt)) }
+    val modifiedStr = remember(uiState.modifiedAt) { timeFormatter.format(java.util.Date(uiState.modifiedAt)) }
+
 
     // TextFieldValue preserves cursor position for toolbar insertions
     var contentFieldValue by remember { mutableStateOf(TextFieldValue(uiState.content)) }
@@ -118,29 +131,7 @@ fun NoteDetailScreen(
         MarkdownVisualTransformation(primaryColor, onSurfaceColor, codeBackground)
     }
 
-    // ── Delete confirmation ────────────────────────────────────────────────
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete note?") },
-            text = { Text("This note will be permanently deleted and cannot be recovered.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        viewModel.deleteNote()
-                        onBack()
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
+    // ── UI ─────────────────────────────────────────────────────────────────
 
     Scaffold(
         topBar = {
@@ -161,15 +152,6 @@ fun NoteDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = { viewModel.saveNote(); onBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -200,7 +182,7 @@ fun NoteDetailScreen(
                 onValueChange = { viewModel.updateTitle(it) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
                 textStyle = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -223,26 +205,113 @@ fun NoteDetailScreen(
                 }
             )
 
+            Text(
+                text = "Created $createdStr  •  Modified $modifiedStr",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+
             HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
             )
 
             // ── Content — live markdown via VisualTransformation ───────────
+            var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+            val density = LocalDensity.current
+
             BasicTextField(
                 value = contentFieldValue,
                 onValueChange = { newVal ->
-                    contentFieldValue = newVal
-                    viewModel.updateContent(newVal.text)
+                    var newTextFieldValue = newVal
+                    
+                    // Check if user pressed Enter (one newline inserted at cursor)
+                    if (newVal.text.length - contentFieldValue.text.length == 1 && 
+                        newVal.selection.start > 0 &&
+                        newVal.text.getOrNull(newVal.selection.start - 1) == '\n') {
+                        
+                        val textBeforeEnter = newVal.text.substring(0, newVal.selection.start - 1)
+                        val lastLine = textBeforeEnter.substringAfterLast('\n')
+                        val listMarker = Regex("^(\\s*)(- \\[[ xX]\\]|[-*]|\\d+\\.)\\s+").find(lastLine)
+                        
+                        if (listMarker != null) {
+                            val marker = listMarker.value
+                            if (lastLine.length == marker.length) {
+                                // Empty list item, cancel it by removing the marker
+                                val text = newVal.text.removeRange(newVal.selection.start - 1 - marker.length, newVal.selection.start - 1)
+                                newTextFieldValue = TextFieldValue(text, TextRange(newVal.selection.start - marker.length))
+                            } else {
+                                // Auto-continue the list
+                                var nextMarker = marker
+                                val numMatch = Regex("^(\\s*)(\\d+)\\.\\s+").find(marker)
+                                if (numMatch != null) {
+                                    val space = numMatch.groupValues[1]
+                                    val num = numMatch.groupValues[2].toInt()
+                                    nextMarker = "$space${num + 1}. "
+                                } else if (marker.contains("- [x]", ignoreCase = true) || marker.contains("- [X]", ignoreCase = true)) {
+                                    nextMarker = marker.replace(Regex("- \\[[xX]\\]", RegexOption.IGNORE_CASE), "- [ ]")
+                                }
+                                val newText = newVal.text.substring(0, newVal.selection.start) + nextMarker + newVal.text.substring(newVal.selection.end)
+                                newTextFieldValue = TextFieldValue(newText, TextRange(newVal.selection.start + nextMarker.length))
+                            }
+                        }
+                    }
+                    
+                    contentFieldValue = newTextFieldValue
+                    viewModel.updateContent(newTextFieldValue.text)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                // Only trigger on the initial press, not on moves
+                                val down = event.changes.firstOrNull { !it.previousPressed && it.pressed }
+                                if (down != null) {
+                                    textLayoutResult?.let { layoutResult ->
+                                        if (contentFieldValue.text.isEmpty()) return@let
+                                        val offset = layoutResult.getOffsetForPosition(down.position)
+                                        // getOffsetForPosition can return length of string, which is out of bounds for getBoundingBox
+                                        val safeOffset = offset.coerceAtMost(contentFieldValue.text.length - 1)
+                                        val rect = layoutResult.getBoundingBox(safeOffset)
+                                        // Ensure tap is visually on the text, not just mapped from empty space
+                                        val expandedRect = rect.copy(
+                                            left = rect.left - 40f,
+                                            right = rect.right + 40f,
+                                            top = rect.top - 40f,
+                                            bottom = rect.bottom + 40f
+                                        )
+                                        
+                                        if (expandedRect.contains(down.position)) {
+                                            val matches = Regex("- \\[[ xX]\\] ").findAll(contentFieldValue.text)
+                                            for (match in matches) {
+                                                if (offset in match.range) {
+                                                    down.consume()
+                                                    val isChecked = match.value.contains("x", ignoreCase = true)
+                                                    val replacement = if (isChecked) "- [ ] " else "- [x] "
+                                                    val newText = contentFieldValue.text.replaceRange(match.range, replacement)
+                                                    
+                                                    val newValLocal = TextFieldValue(newText, contentFieldValue.selection)
+                                                    contentFieldValue = newValLocal
+                                                    viewModel.updateContent(newText)
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 28.sp
                 ),
                 visualTransformation = markdownTransformation,
+                onTextLayout = { textLayoutResult = it },
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { innerTextField ->
                     Box {
@@ -256,6 +325,42 @@ fun NoteDetailScreen(
                             )
                         }
                         innerTextField()
+                        
+                        textLayoutResult?.let { layoutResult ->
+                            if (contentFieldValue.text.isEmpty()) return@let
+                            val matches = Regex("(?m)^\\s*- \\[[ xX]\\] ").findAll(contentFieldValue.text)
+                            for (match in matches) {
+                                val isChecked = match.value.contains("x", ignoreCase = true)
+                                // We want the bounding box of the '-' character to align perfectly with lists
+                                val boxStartOffset = match.range.first + match.value.indexOf('-')
+                                
+                                val safeOffset = boxStartOffset.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
+                                
+                                // Prevent crash if TextLayoutResult is stale (e.g. immediately after pasting text)
+                                if (safeOffset >= layoutResult.layoutInput.text.length) continue
+                                
+                                val rect = layoutResult.getBoundingBox(safeOffset)
+                                
+                                val iconSize = 21.dp
+                                val iconSizePx = with(density) { iconSize.toPx() }
+                                // Center vertically but shift down slightly (2.dp) to better align with the text baseline
+                                val yOffset = rect.top.toInt() + ((rect.height - iconSizePx) / 2).toInt() + with(density) { 2.dp.toPx() }.toInt()
+                                // Align exactly with where the bullet hyphen starts
+                                val xOffset = rect.left.toInt()
+                                
+                                val icon = if (isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank
+                                val color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = color,
+                                    modifier = Modifier
+                                        .offset { IntOffset(xOffset, yOffset) }
+                                        .size(iconSize)
+                                )
+                            }
+                        }
                     }
                 }
             )

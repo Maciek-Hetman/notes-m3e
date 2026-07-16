@@ -254,7 +254,7 @@ fun NoteItem(
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                text = formatTimestamp(note.timestamp),
+                text = formatTimestamp(note.modifiedAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
