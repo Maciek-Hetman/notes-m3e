@@ -42,7 +42,11 @@ fun NotesNavHost() {
 
     NavDisplay(
         backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
+        onBack = {
+            if (backStack.size > 1) {
+                backStack.removeLastOrNull()
+            }
+        },
         sceneStrategy = listDetailStrategy,
         entryDecorators = listOf(
             rememberSaveableStateHolderNavEntryDecorator(),
@@ -80,7 +84,11 @@ fun NotesNavHost() {
                 )
                 NoteDetailScreen(
                     viewModel = viewModel,
-                    onBack = { backStack.removeLastOrNull() }
+                    onBack = {
+                        if (backStack.size > 1) {
+                            backStack.removeLastOrNull()
+                        }
+                    }
                 )
             }
         }
