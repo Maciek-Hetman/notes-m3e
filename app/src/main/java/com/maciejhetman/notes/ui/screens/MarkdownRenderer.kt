@@ -1,6 +1,7 @@
 package com.maciejhetman.notes.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Card
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.rememberAsyncImagePainter
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,6 +38,7 @@ private sealed class MarkdownBlock {
     data class UnorderedItem(val text: String) : MarkdownBlock()
     data class OrderedItem(val index: Int, val text: String) : MarkdownBlock()
     data class BlockQuote(val text: String) : MarkdownBlock()
+    data class Image(val path: String, val alt: String) : MarkdownBlock()
     object HorizontalRule : MarkdownBlock()
     object BlankLine : MarkdownBlock()
 }
@@ -65,6 +70,14 @@ private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
             }
             trimmed.startsWith("# ") -> {
                 blocks.add(MarkdownBlock.Heading(1, trimmed.removePrefix("# ")))
+                orderedIndex = 1
+            }
+            // Markdown image
+            trimmed.matches(Regex("^!\\[(.*?)\\]\\((.*?)\\)$")) -> {
+                val match = Regex("^!\\[(.*?)\\]\\((.*?)\\)$").find(trimmed)
+                val alt = match?.groupValues?.getOrNull(1) ?: ""
+                val path = match?.groupValues?.getOrNull(2) ?: ""
+                blocks.add(MarkdownBlock.Image(path, alt))
                 orderedIndex = 1
             }
             // Block quote
@@ -221,6 +234,22 @@ fun MarkdownText(
                     Spacer(Modifier.height(4.dp))
                 }
 
+                is MarkdownBlock.Image -> {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = rememberAsyncImagePainter(model = block.path),
+                            contentDescription = block.alt.ifEmpty { null },
+                            modifier = Modifier.fillMaxWidth(),
+                            contentScale = ContentScale.FillWidth
+                        )
+                    }
+                }
+
                 is MarkdownBlock.Paragraph -> {
                     Text(
                         text = parseInline(block.text, codeBackground),
@@ -307,6 +336,8 @@ fun MarkdownText(
  */
 fun stripMarkdown(text: String): String {
     return text
+        .replace(Regex("!\\[.*?\\]\\(.*?\\)"), "") // Strip markdown images
+        .replace(Regex("\\[(.*?)\\]\\(.*?\\)"), "$1") // Strip markdown links but keep text
         .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
         .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
         .replace(Regex("\\*(.*?)\\*"), "$1")

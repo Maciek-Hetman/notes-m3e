@@ -15,15 +15,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,8 +41,12 @@ import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatListNumbered
@@ -64,6 +78,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,15 +86,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.ContentScale
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
@@ -93,15 +118,32 @@ fun NoteDetailScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val contentFocusRequester = remember { FocusRequester() }
+    val imageAspectRatios = remember { mutableStateMapOf<String, Float>() }
+    var containerWidthPx by remember { mutableStateOf(0) }
+    // TextFieldValue preserves cursor position for toolbar insertions
+    var contentFieldValue by remember { mutableStateOf(TextFieldValue(uiState.content)) }
+
+    val context = LocalContext.current
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            if (uri != null) {
+                val savedPath = copyUriToInternalStorage(context, uri)
+                if (savedPath != null) {
+                    val syntax = "\n![image]($savedPath)\n"
+                    val (newValue) = buildInsertedValue(syntax, contentFieldValue)
+                    contentFieldValue = newValue
+                    viewModel.updateContent(newValue.text)
+                }
+            }
+        }
+    )
 
     val dateFormatter = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()) }
     val timeFormatter = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()) }
     val createdStr = remember(uiState.createdAt) { dateFormatter.format(java.util.Date(uiState.createdAt)) }
     val modifiedStr = remember(uiState.modifiedAt) { timeFormatter.format(java.util.Date(uiState.modifiedAt)) }
-
-
-    // TextFieldValue preserves cursor position for toolbar insertions
-    var contentFieldValue by remember { mutableStateOf(TextFieldValue(uiState.content)) }
 
     // Sync with Room on first load (existing note)
     LaunchedEffect(uiState.id) {
@@ -130,8 +172,8 @@ fun NoteDetailScreen(
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
 
     // Recreated only when theme colours change
-    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground) {
-        MarkdownVisualTransformation(primaryColor, onSurfaceColor, codeBackground)
+    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap()) {
+        MarkdownVisualTransformation(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios)
     }
 
     // ── UI ─────────────────────────────────────────────────────────────────
@@ -200,6 +242,13 @@ fun NoteDetailScreen(
                     val (newValue) = buildInsertedValue(syntax, contentFieldValue)
                     contentFieldValue = newValue
                     viewModel.updateContent(newValue.text)
+                },
+                onPickPhoto = {
+                    photoPickerLauncher.launch(
+                        androidx.activity.result.PickVisualMediaRequest(
+                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                        )
+                    )
                 }
             )
         },
@@ -226,6 +275,12 @@ fun NoteDetailScreen(
                 ),
                 singleLine = true,
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { contentFocusRequester.requestFocus() }
+                ),
                 decorationBox = { innerTextField ->
                     Box {
                         if (uiState.title.isEmpty()) {
@@ -276,83 +331,230 @@ fun NoteDetailScreen(
             }
 
             BasicTextField(
-                value = contentFieldValue,
-                onValueChange = { newVal ->
-                    var newTextFieldValue = newVal
-                    
-                    // Check if user pressed Enter (one newline inserted at cursor)
-                    if (newVal.text.length - contentFieldValue.text.length == 1 && 
-                        newVal.selection.start > 0 &&
-                        newVal.text.getOrNull(newVal.selection.start - 1) == '\n') {
+                    value = contentFieldValue,
+                    onValueChange = { newVal ->
+                        var newTextFieldValue = newVal
                         
-                        val textBeforeEnter = newVal.text.substring(0, newVal.selection.start - 1)
-                        val lastLine = textBeforeEnter.substringAfterLast('\n')
-                        val listMarker = Regex("^(\\s*)(- \\[[ xX]\\]|[-*]|\\d+\\.)\\s+").find(lastLine)
-                        
-                        if (listMarker != null) {
-                            val marker = listMarker.value
-                            if (lastLine.length == marker.length) {
-                                // Empty list item, cancel it by removing the marker
-                                val text = newVal.text.removeRange(newVal.selection.start - 1 - marker.length, newVal.selection.start - 1)
-                                newTextFieldValue = TextFieldValue(text, TextRange(newVal.selection.start - marker.length))
-                            } else {
-                                // Auto-continue the list
-                                var nextMarker = marker
-                                val numMatch = Regex("^(\\s*)(\\d+)\\.\\s+").find(marker)
-                                if (numMatch != null) {
-                                    val space = numMatch.groupValues[1]
-                                    val num = numMatch.groupValues[2].toInt()
-                                    nextMarker = "$space${num + 1}. "
-                                } else if (marker.contains("- [x]", ignoreCase = true) || marker.contains("- [X]", ignoreCase = true)) {
-                                    nextMarker = marker.replace(Regex("- \\[[xX]\\]", RegexOption.IGNORE_CASE), "- [ ]")
+                        // Check if user pressed Enter (one newline inserted at cursor)
+                        if (newVal.text.length - contentFieldValue.text.length == 1 && 
+                            newVal.selection.start > 0 &&
+                            newVal.text.getOrNull(newVal.selection.start - 1) == '\n') {
+                            
+                            val textBeforeEnter = newVal.text.substring(0, newVal.selection.start - 1)
+                            val lastLine = textBeforeEnter.substringAfterLast('\n')
+                            val listMarker = Regex("^(\\s*)(- \\[[ xX]\\]|[-*]|\\d+\\.)\\s+").find(lastLine)
+                            
+                            if (listMarker != null) {
+                                val marker = listMarker.value
+                                if (lastLine.length == marker.length) {
+                                    // Empty list item, cancel it by removing the marker
+                                    val text = newVal.text.removeRange(newVal.selection.start - 1 - marker.length, newVal.selection.start - 1)
+                                    newTextFieldValue = TextFieldValue(text, TextRange(newVal.selection.start - marker.length))
+                                } else {
+                                    // Auto-continue the list
+                                    var nextMarker = marker
+                                    val numMatch = Regex("^(\\s*)(\\d+)\\.\\s+").find(marker)
+                                    if (numMatch != null) {
+                                        val space = numMatch.groupValues[1]
+                                        val num = numMatch.groupValues[2].toInt()
+                                        nextMarker = "$space${num + 1}. "
+                                    } else if (marker.contains("- [x]", ignoreCase = true) || marker.contains("- [X]", ignoreCase = true)) {
+                                        nextMarker = marker.replace(Regex("- \\[[xX]\\]", RegexOption.IGNORE_CASE), "- [ ]")
+                                    }
+                                    val newText = newVal.text.substring(0, newVal.selection.start) + nextMarker + newVal.text.substring(newVal.selection.end)
+                                    newTextFieldValue = TextFieldValue(newText, TextRange(newVal.selection.start + nextMarker.length))
                                 }
-                                val newText = newVal.text.substring(0, newVal.selection.start) + nextMarker + newVal.text.substring(newVal.selection.end)
-                                newTextFieldValue = TextFieldValue(newText, TextRange(newVal.selection.start + nextMarker.length))
                             }
                         }
-                    }
-                    
-                    contentFieldValue = newTextFieldValue
-                    viewModel.updateContent(newTextFieldValue.text)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-                    .bringIntoViewRequester(bringIntoViewRequester)
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                // Only trigger on the initial press, not on moves
-                                val down = event.changes.firstOrNull { !it.previousPressed && it.pressed }
-                                if (down != null) {
-                                    textLayoutResult?.let { layoutResult ->
-                                        if (contentFieldValue.text.isEmpty()) return@let
-                                        val offset = layoutResult.getOffsetForPosition(down.position)
-                                        // getOffsetForPosition can return length of string, which is out of bounds for getBoundingBox
-                                        val safeOffset = offset.coerceAtMost(contentFieldValue.text.length - 1)
+                        
+                        contentFieldValue = newTextFieldValue
+                        viewModel.updateContent(newTextFieldValue.text)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .bringIntoViewRequester(bringIntoViewRequester)
+                        .focusRequester(contentFocusRequester)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    // Only trigger on the initial press, not on moves
+                                    val down = event.changes.firstOrNull { !it.previousPressed && it.pressed }
+                                    if (down != null) {
+                                        textLayoutResult?.let { layoutResult ->
+                                            if (contentFieldValue.text.isEmpty()) return@let
+                                            val offset = layoutResult.getOffsetForPosition(down.position)
+                                            // getOffsetForPosition can return length of string, which is out of bounds for getBoundingBox
+                                            val safeOffset = offset.coerceAtMost(contentFieldValue.text.length - 1)
+                                            val rect = layoutResult.getBoundingBox(safeOffset)
+                                            // Ensure tap is visually on the text, not just mapped from empty space
+                                            val expandedRect = rect.copy(
+                                                left = rect.left - 40f,
+                                                right = rect.right + 40f,
+                                                top = rect.top - 40f,
+                                                bottom = rect.bottom + 40f
+                                            )
+                                            
+                                            if (expandedRect.contains(down.position)) {
+                                                val matches = Regex("- \\[[ xX]\\] ").findAll(contentFieldValue.text)
+                                                for (match in matches) {
+                                                    if (offset in match.range) {
+                                                        down.consume()
+                                                        val isChecked = match.value.contains("x", ignoreCase = true)
+                                                        val replacement = if (isChecked) "- [ ] " else "- [x] "
+                                                        val newText = contentFieldValue.text.replaceRange(match.range, replacement)
+                                                        
+                                                        val newValLocal = TextFieldValue(newText, contentFieldValue.selection)
+                                                        contentFieldValue = newValLocal
+                                                        viewModel.updateContent(newText)
+                                                        break
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 28.sp
+                    ),
+                    visualTransformation = markdownTransformation,
+                    onTextLayout = { textLayoutResult = it },
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.onGloballyPositioned { containerWidthPx = it.size.width }) {
+                            if (contentFieldValue.text.isEmpty()) {
+                                Text(
+                                    "Start writing…",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                                        lineHeight = 28.sp
+                                    )
+                                )
+                            }
+                            innerTextField()
+                            
+                            textLayoutResult?.let { layoutResult ->
+                                if (contentFieldValue.text.isEmpty()) return@let
+                                val matches = Regex("(?m)^\\s*- \\[[ xX]\\] ").findAll(contentFieldValue.text)
+                                for (match in matches) {
+                                    val isChecked = match.value.contains("x", ignoreCase = true)
+                                    // We want the bounding box of the '-' character to align perfectly with lists
+                                    val boxStartOffset = match.range.first + match.value.indexOf('-')
+                                    
+                                    val safeOffset = boxStartOffset.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
+                                    
+                                    // Prevent crash if TextLayoutResult is stale (e.g. immediately after pasting text)
+                                    if (safeOffset >= layoutResult.layoutInput.text.length) continue
+                                    
+                                    val rect = layoutResult.getBoundingBox(safeOffset)
+                                    
+                                    val iconSize = 21.dp
+                                    val iconSizePx = with(density) { iconSize.toPx() }
+                                    // Center vertically but shift down slightly (2.dp) to better align with the text baseline
+                                    val yOffset = rect.top.toInt() + ((rect.height - iconSizePx) / 2).toInt() + with(density) { 2.dp.toPx() }.toInt()
+                                    // Align exactly with where the bullet hyphen starts
+                                    val xOffset = rect.left.toInt()
+                                    
+                                    val icon = if (isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank
+                                    val color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = color,
+                                        modifier = Modifier
+                                            .offset { IntOffset(xOffset, yOffset) }
+                                            .size(iconSize)
+                                    )
+                                }
+
+                                // Inline Image Overlays
+                                val imageMatches = Regex("!\\[.*?\\]\\((.*?)\\)").findAll(contentFieldValue.text)
+                                for (match in imageMatches) {
+                                    val isCursorInside = contentFieldValue.selection.start in match.range.first..(match.range.last + 1)
+                                    if (!isCursorInside) {
+                                        val safeOffset = match.range.first.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
+                                        if (safeOffset >= layoutResult.layoutInput.text.length) continue
                                         val rect = layoutResult.getBoundingBox(safeOffset)
-                                        // Ensure tap is visually on the text, not just mapped from empty space
-                                        val expandedRect = rect.copy(
-                                            left = rect.left - 40f,
-                                            right = rect.right + 40f,
-                                            top = rect.top - 40f,
-                                            bottom = rect.bottom + 40f
-                                        )
+                                        val yOffset = rect.top.toInt()
+                                        val path = match.groupValues[1]
+                                        // Use the measured container width (not text layout width) for full-width images
+                                        val widthDp = with(density) { containerWidthPx.toDp() }
+                                        val painter = rememberAsyncImagePainter(model = path)
+                                        val intrinsicSize = painter.intrinsicSize
                                         
-                                        if (expandedRect.contains(down.position)) {
-                                            val matches = Regex("- \\[[ xX]\\] ").findAll(contentFieldValue.text)
-                                            for (match in matches) {
-                                                if (offset in match.range) {
-                                                    down.consume()
-                                                    val isChecked = match.value.contains("x", ignoreCase = true)
-                                                    val replacement = if (isChecked) "- [ ] " else "- [x] "
-                                                    val newText = contentFieldValue.text.replaceRange(match.range, replacement)
-                                                    
-                                                    val newValLocal = TextFieldValue(newText, contentFieldValue.selection)
-                                                    contentFieldValue = newValLocal
-                                                    viewModel.updateContent(newText)
-                                                    break
+                                        // Cache aspect ratio inside state map to dynamically update transformation
+                                        val ratio = if (intrinsicSize.width > 0 && intrinsicSize.height > 0) {
+                                            val r = intrinsicSize.width / intrinsicSize.height
+                                            if (imageAspectRatios[path] != r) {
+                                                imageAspectRatios[path] = r
+                                            }
+                                            r
+                                        } else {
+                                            imageAspectRatios[path]
+                                        }
+
+                                        val finalWidth = widthDp
+                                        val finalHeight = if (ratio != null && ratio > 0) {
+                                            widthDp / ratio
+                                        } else {
+                                            with(density) { 200.sp.toDp() }
+                                        }
+
+                                        Card(
+                                            modifier = Modifier
+                                                .offset { IntOffset(0, yOffset) }
+                                                .width(finalWidth)
+                                                .height(finalHeight)
+                                                .padding(vertical = 4.dp)
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null
+                                                ) {
+                                                    contentFocusRequester.requestFocus()
+                                                    contentFieldValue = TextFieldValue(
+                                                        contentFieldValue.text,
+                                                        TextRange(match.range.first)
+                                                    )
+                                                },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                                        ) {
+                                            Box(modifier = Modifier.fillMaxSize()) {
+                                                androidx.compose.foundation.Image(
+                                                    painter = painter,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.FillBounds
+                                                )
+                                                // Remove image button (small Box to override IconButton min touch target)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.TopEnd)
+                                                        .padding(8.dp)
+                                                        .size(18.dp)
+                                                        .background(Color.Black.copy(alpha = 0.4f), shape = CircleShape)
+                                                        .clickable(
+                                                            interactionSource = remember { MutableInteractionSource() },
+                                                            indication = null
+                                                        ) {
+                                                            val pattern = "!\\[.*?\\]\\(${Regex.escape(path)}\\)"
+                                                            val newText = contentFieldValue.text.replace(Regex(pattern), "")
+                                                            contentFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                                                            viewModel.updateContent(newText)
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Close,
+                                                        contentDescription = "Remove photo",
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(10.dp)
+                                                    )
                                                 }
                                             }
                                         }
@@ -360,64 +562,24 @@ fun NoteDetailScreen(
                                 }
                             }
                         }
-                    },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 28.sp
-                ),
-                visualTransformation = markdownTransformation,
-                onTextLayout = { textLayoutResult = it },
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { innerTextField ->
-                    Box {
-                        if (contentFieldValue.text.isEmpty()) {
-                            Text(
-                                "Start writing…",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
-                                    lineHeight = 28.sp
-                                )
-                            )
-                        }
-                        innerTextField()
-                        
-                        textLayoutResult?.let { layoutResult ->
-                            if (contentFieldValue.text.isEmpty()) return@let
-                            val matches = Regex("(?m)^\\s*- \\[[ xX]\\] ").findAll(contentFieldValue.text)
-                            for (match in matches) {
-                                val isChecked = match.value.contains("x", ignoreCase = true)
-                                // We want the bounding box of the '-' character to align perfectly with lists
-                                val boxStartOffset = match.range.first + match.value.indexOf('-')
-                                
-                                val safeOffset = boxStartOffset.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
-                                
-                                // Prevent crash if TextLayoutResult is stale (e.g. immediately after pasting text)
-                                if (safeOffset >= layoutResult.layoutInput.text.length) continue
-                                
-                                val rect = layoutResult.getBoundingBox(safeOffset)
-                                
-                                val iconSize = 21.dp
-                                val iconSizePx = with(density) { iconSize.toPx() }
-                                // Center vertically but shift down slightly (2.dp) to better align with the text baseline
-                                val yOffset = rect.top.toInt() + ((rect.height - iconSizePx) / 2).toInt() + with(density) { 2.dp.toPx() }.toInt()
-                                // Align exactly with where the bullet hyphen starts
-                                val xOffset = rect.left.toInt()
-                                
-                                val icon = if (isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank
-                                val color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = color,
-                                    modifier = Modifier
-                                        .offset { IntOffset(xOffset, yOffset) }
-                                        .size(iconSize)
-                                )
-                            }
-                        }
                     }
-                }
+                )
+
+            // Tapping the empty area below the content moves cursor to the end
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 200.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        contentFocusRequester.requestFocus()
+                        contentFieldValue = TextFieldValue(
+                            contentFieldValue.text,
+                            TextRange(contentFieldValue.text.length)
+                        )
+                    }
             )
 
             Spacer(Modifier.height(80.dp))
@@ -469,6 +631,7 @@ private enum class ToolbarState { Main, Headings, Lists }
 @Composable
 private fun MarkdownToolbar(
     onInsert: (String) -> Unit,
+    onPickPhoto: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var state by remember { mutableStateOf(ToolbarState.Main) }
@@ -500,6 +663,8 @@ private fun MarkdownToolbar(
                         ToolbarIconButton(Icons.Default.FormatUnderlined, "Underline") { onInsert("underline") }
                         ToolbarDivider()
                         ToolbarIconButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Lists") { state = ToolbarState.Lists }
+                        ToolbarDivider()
+                        ToolbarIconButton(Icons.Default.Image, "Insert Photo") { onPickPhoto() }
                     }
                     ToolbarState.Headings -> {
                         ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
@@ -567,4 +732,22 @@ private fun ToolbarDivider() {
             .padding(horizontal = 4.dp),
         color = MaterialTheme.colorScheme.outlineVariant
     )
+}
+
+private fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri): String? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val fileName = "img_${System.currentTimeMillis()}.jpg"
+        val file = java.io.File(context.filesDir, fileName)
+        val outputStream = java.io.FileOutputStream(file)
+        inputStream.use { input ->
+            outputStream.use { output ->
+                input.copyTo(output)
+            }
+        }
+        file.absolutePath
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
 }

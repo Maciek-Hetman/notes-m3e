@@ -18,10 +18,14 @@ import androidx.compose.ui.unit.sp
  * modifying the underlying text. OffsetMapping is Identity since no characters
  * are added or removed — only SpanStyles are layered on top.
  */
+import androidx.compose.ui.text.TextRange
+
 class MarkdownVisualTransformation(
     private val primaryColor: Color,
     private val onSurfaceColor: Color,
-    private val codeBackground: Color
+    private val codeBackground: Color,
+    private val selection: TextRange,
+    private val imageAspectRatios: Map<String, Float>
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -159,6 +163,50 @@ class MarkdownVisualTransformation(
                 // Dim the tags
                 addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), match.range.first, match.range.first + 3)
                 addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), match.range.last - 3, match.range.last + 1)
+            }
+        }
+
+        // Markdown Images ![alt](uri)
+        Regex("!\\[.*?\\]\\((.*?)\\)").findAll(text).forEach { match ->
+            if (!match.range.isInsideCode()) {
+                val isCursorInside = selection.start in match.range.first..(match.range.last + 1)
+                if (isCursorInside) {
+                    addStyle(
+                        SpanStyle(
+                            color = primaryColor.copy(alpha = 0.45f),
+                            fontStyle = FontStyle.Italic,
+                            fontSize = 13.sp
+                        ),
+                        match.range.first, match.range.last + 1
+                    )
+                } else {
+                    val path = match.groupValues.getOrNull(1) ?: ""
+                    val ratio = imageAspectRatios[path]
+                    val heightSp = if (ratio != null && ratio > 0) {
+                        (320f / ratio).coerceIn(80f, 600f).sp
+                    } else {
+                        200.sp
+                    }
+
+                    // Style the first character as transparent and heightSp to allocate height
+                    addStyle(
+                        SpanStyle(
+                            color = Color.Transparent,
+                            fontSize = heightSp
+                        ),
+                        match.range.first, match.range.first + 1
+                    )
+                    // Style the remaining characters as transparent and 0.sp so they don't wrap
+                    if (match.range.last > match.range.first) {
+                        addStyle(
+                            SpanStyle(
+                                color = Color.Transparent,
+                                fontSize = 0.sp
+                            ),
+                            match.range.first + 1, match.range.last + 1
+                        )
+                    }
+                }
             }
         }
     }
