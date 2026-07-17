@@ -25,7 +25,11 @@ class MarkdownVisualTransformation(
     private val onSurfaceColor: Color,
     private val codeBackground: Color,
     private val selection: TextRange,
-    private val imageAspectRatios: Map<String, Float>
+    private val imageAspectRatios: Map<String, Float>,
+    // Width (in dp, expressed as a plain float) that images are actually rendered at.
+    // Used so the reserved line-height matches the real displayed width/aspect-ratio
+    // instead of an arbitrary assumption — otherwise the image ends up squashed/stretched.
+    private val containerWidthDp: Float = 320f
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -79,9 +83,18 @@ class MarkdownVisualTransformation(
                 // Todo list
                 line.trimStart().let { it.startsWith("- [ ] ") || it.startsWith("- [x] ") || it.startsWith("- [X] ") } -> {
                     val spaceCount = line.length - line.trimStart().length
-                    // Make the "- [ ] " text completely transparent so we can overlay a stock Checkbox icon
-                    // letterSpacing = 2.sp gives it a bit more width to ensure there's enough padding on the right before the text starts
-                    addStyle(SpanStyle(color = Color.Transparent, letterSpacing = 2.sp), offset + spaceCount, (offset + spaceCount + 6).coerceAtMost(lineEnd))
+                    // Make the "- [ ] " text completely transparent so we can overlay a stock Checkbox icon.
+                    // Width is shrunk via textGeometricTransform (not fontSize) so the reserved gap before the
+                    // item text stays small and predictable. fontSize is bumped slightly above body text so
+                    // this line's natural height comfortably fits the overlaid checkbox icon.
+                    addStyle(
+                        SpanStyle(
+                            color = Color.Transparent,
+                            fontSize = 20.sp,
+                            textGeometricTransform = androidx.compose.ui.text.style.TextGeometricTransform(scaleX = 0.55f)
+                        ),
+                        offset + spaceCount, (offset + spaceCount + 6).coerceAtMost(lineEnd)
+                    )
                 }
                 // Unordered list bullet
                 line.trimStart().startsWith("• ") -> {
@@ -182,13 +195,14 @@ class MarkdownVisualTransformation(
                 } else {
                     val path = match.groupValues.getOrNull(1) ?: ""
                     val ratio = imageAspectRatios[path]
+                    val effectiveWidth = if (containerWidthDp > 0) containerWidthDp else 320f
                     val heightSp = if (ratio != null && ratio > 0) {
-                        (320f / ratio).coerceIn(80f, 600f).sp
+                        (effectiveWidth / ratio).coerceIn(80f, 900f).sp
                     } else {
                         200.sp
                     }
 
-                    // Style the first character as transparent and heightSp to allocate height
+                    // First character: transparent, sized to image height — reserves the line height.
                     addStyle(
                         SpanStyle(
                             color = Color.Transparent,
@@ -196,7 +210,8 @@ class MarkdownVisualTransformation(
                         ),
                         match.range.first, match.range.first + 1
                     )
-                    // Style the remaining characters as transparent and 0.sp so they don't wrap
+                    // Remaining characters: transparent, 0.sp — they have zero advance width so
+                    // they never wrap to new lines and contribute no extra height.
                     if (match.range.last > match.range.first) {
                         addStyle(
                             SpanStyle(

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
@@ -125,6 +127,8 @@ fun NoteDetailScreen(
     var contentFieldValue by remember { mutableStateOf(TextFieldValue(uiState.content)) }
 
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
@@ -135,6 +139,8 @@ fun NoteDetailScreen(
                     val (newValue) = buildInsertedValue(syntax, contentFieldValue)
                     contentFieldValue = newValue
                     viewModel.updateContent(newValue.text)
+                    contentFocusRequester.requestFocus()
+                    keyboardController?.show()
                 }
             }
         }
@@ -171,9 +177,13 @@ fun NoteDetailScreen(
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
 
+    // Real rendered width of the content field — used so the reserved height for inline
+    // images matches their actual displayed width/aspect-ratio (otherwise they look squashed).
+    val containerWidthDp = with(density) { containerWidthPx.toDp().value }
+
     // Recreated only when theme colours change
-    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap()) {
-        MarkdownVisualTransformation(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios)
+    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(), containerWidthDp) {
+        MarkdownVisualTransformation(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios, containerWidthDp)
     }
 
     // ── UI ─────────────────────────────────────────────────────────────────
@@ -242,6 +252,10 @@ fun NoteDetailScreen(
                     val (newValue) = buildInsertedValue(syntax, contentFieldValue)
                     contentFieldValue = newValue
                     viewModel.updateContent(newValue.text)
+                    // Toolbar buttons steal focus from the text field, which dismisses the
+                    // keyboard — explicitly refocus and re-show it so typing can continue.
+                    contentFocusRequester.requestFocus()
+                    keyboardController?.show()
                 },
                 onPickPhoto = {
                     photoPickerLauncher.launch(
@@ -249,7 +263,8 @@ fun NoteDetailScreen(
                             ActivityResultContracts.PickVisualMedia.ImageOnly
                         )
                     )
-                }
+                },
+                modifier = Modifier.imePadding()
             )
         },
         floatingActionButtonPosition = androidx.compose.material3.FabPosition.Center
@@ -311,17 +326,24 @@ fun NoteDetailScreen(
 
             // ── Content — live markdown via VisualTransformation ───────────
             var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-            val density = LocalDensity.current
             val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
-            LaunchedEffect(contentFieldValue.selection, textLayoutResult) {
+            // Re-run whenever the IME's height changes (i.e. the keyboard is animating open/closed),
+            // not just when the cursor moves — otherwise bringIntoView fires before the keyboard has
+            // actually appeared (using the pre-keyboard viewport), scrolling nowhere near far enough
+            // to keep the cursor visible above it.
+            val imeBottomPx = WindowInsets.ime.getBottom(density)
+
+            LaunchedEffect(contentFieldValue.selection, textLayoutResult, imeBottomPx) {
                 val layoutResult = textLayoutResult ?: return@LaunchedEffect
                 val selection = contentFieldValue.selection
                 val cursorStart = selection.start
                 if (cursorStart >= 0 && cursorStart <= contentFieldValue.text.length) {
                     if (cursorStart <= layoutResult.layoutInput.text.length) {
                         val cursorRect = layoutResult.getCursorRect(cursorStart)
-                        val extraSpacingPx = with(density) { 100.dp.toPx() }
+                        // Extra bottom margin roughly matches the floating toolbar's height so the
+                        // cursor lands just above the toolbar (and keyboard), not tucked right behind it.
+                        val extraSpacingPx = with(density) { 96.dp.toPx() }
                         val extendedRect = cursorRect.copy(
                             bottom = cursorRect.bottom + extraSpacingPx
                         )
@@ -335,10 +357,17 @@ fun NoteDetailScreen(
                     onValueChange = { newVal ->
                         var newTextFieldValue = newVal
                         
-                        // Check if user pressed Enter (one newline inserted at cursor)
-                        if (newVal.text.length - contentFieldValue.text.length == 1 && 
+                        // Check if user pressed Enter (exactly one newline was just inserted right
+                        // before the cursor). We compare newline *counts* rather than requiring an
+                        // exact +1 total length diff, since some IMEs bundle autocorrect/autocapitalize
+                        // edits together with the Enter keystroke — a strict length check would then
+                        // silently skip this block and leave a stray list marker (e.g. "1.") behind on
+                        // its own empty line. Requiring exactly one *new* newline (not "at least one")
+                        // still avoids misfiring on multi-line pastes.
+                        val addedNewline = newVal.text.count { it == '\n' } == contentFieldValue.text.count { it == '\n' } + 1 &&
                             newVal.selection.start > 0 &&
-                            newVal.text.getOrNull(newVal.selection.start - 1) == '\n') {
+                            newVal.text.getOrNull(newVal.selection.start - 1) == '\n'
+                        if (addedNewline) {
                             
                             val textBeforeEnter = newVal.text.substring(0, newVal.selection.start - 1)
                             val lastLine = textBeforeEnter.substringAfterLast('\n')
@@ -419,7 +448,13 @@ fun NoteDetailScreen(
                         },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                         color = MaterialTheme.colorScheme.onSurface,
-                        lineHeight = 28.sp
+                        // Explicitly Unspecified (not just "not overridden") — bodyLarge itself carries a
+                        // baked-in lineHeight, and ANY fixed lineHeight forces every line in this field to
+                        // that exact height, clamping lines that contain an oversized run back down. That
+                        // was silently capping our transparent image-placeholder character (and, to a lesser
+                        // extent, headings) to a tiny line height no matter how big we made the placeholder.
+                        // Leaving it Unspecified lets each line size naturally to its tallest run.
+                        lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
                     ),
                     visualTransformation = markdownTransformation,
                     onTextLayout = { textLayoutResult = it },
@@ -431,7 +466,7 @@ fun NoteDetailScreen(
                                     "Start writing…",
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
-                                        lineHeight = 28.sp
+                                        lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
                                     )
                                 )
                             }
@@ -452,12 +487,20 @@ fun NoteDetailScreen(
                                     
                                     val rect = layoutResult.getBoundingBox(safeOffset)
                                     
-                                    val iconSize = 21.dp
+                                    // Measure the actual reserved width of the hidden "- [ ] " run (6 chars)
+                                    // so the checkbox can be centered inside it — anchoring only to the left
+                                    // edge left a big, uneven gap before the item text.
+                                    val boxEndOffset = (safeOffset + 6).coerceAtMost(layoutResult.layoutInput.text.length)
+                                    val startX = layoutResult.getHorizontalPosition(safeOffset, true)
+                                    val endX = layoutResult.getHorizontalPosition(boxEndOffset, true)
+                                    val reservedWidthPx = (endX - startX).coerceAtLeast(0f)
+                                    
+                                    val iconSize = 22.dp
                                     val iconSizePx = with(density) { iconSize.toPx() }
                                     // Center vertically but shift down slightly (2.dp) to better align with the text baseline
                                     val yOffset = rect.top.toInt() + ((rect.height - iconSizePx) / 2).toInt() + with(density) { 2.dp.toPx() }.toInt()
-                                    // Align exactly with where the bullet hyphen starts
-                                    val xOffset = rect.left.toInt()
+                                    // Center horizontally within the reserved run instead of hugging the left edge
+                                    val xOffset = (startX + ((reservedWidthPx - iconSizePx) / 2).coerceAtLeast(0f)).toInt()
                                     
                                     val icon = if (isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank
                                     val color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
@@ -479,8 +522,13 @@ fun NoteDetailScreen(
                                     if (!isCursorInside) {
                                         val safeOffset = match.range.first.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
                                         if (safeOffset >= layoutResult.layoutInput.text.length) continue
+                                        // getBoundingBox: tight ink bounds of the glyph — used only for the y-position.
                                         val rect = layoutResult.getBoundingBox(safeOffset)
                                         val yOffset = rect.top.toInt()
+                                        // getCursorRect: full line height (top-of-line → bottom-of-line) reserved by the
+                                        // text engine for the placeholder character. This matches what the visual
+                                        // transformation actually set aside, so the card fills the space exactly.
+                                        val lineHeight = layoutResult.getCursorRect(safeOffset).height
                                         val path = match.groupValues[1]
                                         // Use the measured container width (not text layout width) for full-width images
                                         val widthDp = with(density) { containerWidthPx.toDp() }
@@ -499,11 +547,7 @@ fun NoteDetailScreen(
                                         }
 
                                         val finalWidth = widthDp
-                                        val finalHeight = if (ratio != null && ratio > 0) {
-                                            widthDp / ratio
-                                        } else {
-                                            with(density) { 200.sp.toDp() }
-                                        }
+                                        val finalHeight = with(density) { lineHeight.toDp() }
 
                                         Card(
                                             modifier = Modifier
@@ -529,7 +573,10 @@ fun NoteDetailScreen(
                                                     painter = painter,
                                                     contentDescription = null,
                                                     modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.FillBounds
+                                                    // Crop (not FillBounds) so any small rounding mismatch between the
+                                                    // reserved height and the box's actual aspect ratio never stretches
+                                                    // the image — it crops slightly instead of squashing it.
+                                                    contentScale = ContentScale.Crop
                                                 )
                                                 // Remove image button (small Box to override IconButton min touch target)
                                                 Box(
