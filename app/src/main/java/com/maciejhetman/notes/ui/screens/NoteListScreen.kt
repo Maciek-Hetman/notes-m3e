@@ -83,6 +83,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// SearchBar/InputField(query, expanded, onExpandedChange, ...) are deprecated in favor of the
+// SearchBarState + TextFieldState slot API, but this bar never expands into a full-screen/docked
+// results view, so migrating would require a state-management rewrite with no behavioral upside.
+@Suppress("DEPRECATION")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteListScreen(
@@ -370,6 +374,10 @@ private fun formatDateRange(filter: DateRangeFilter): String {
     return "$start – $end"
 }
 
+// confirmValueChange is deprecated without a direct replacement; it is used here purely to trigger
+// the delete-confirmation dialog and always veto the swipe (return false) so the item snaps back.
+// The suggested anchors-based migration would change the swipe/settle mechanics, so it's deferred.
+@Suppress("DEPRECATION")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeableNoteItem(
