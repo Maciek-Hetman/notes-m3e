@@ -20,25 +20,51 @@ class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    val notesUiState: StateFlow<NoteListUiState> = _searchQuery
-        .flatMapLatest { query ->
+    private val _sortOption = MutableStateFlow(SortOption.MODIFIED_NEWEST)
+    val sortOption: StateFlow<SortOption> = _sortOption.asStateFlow()
+
+    private val _dateRangeFilter = MutableStateFlow<DateRangeFilter?>(null)
+    val dateRangeFilter: StateFlow<DateRangeFilter?> = _dateRangeFilter.asStateFlow()
+
+    val notesUiState: StateFlow<NoteListUiState> = combine(
+        _searchQuery.flatMapLatest { query ->
             if (query.isEmpty()) {
                 repository.getAllNotesStream()
             } else {
                 repository.searchNotes(query)
             }
-        }
-        .combine(searchQuery) { notes, _ ->
-            NoteListUiState(notes = notes)
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = NoteListUiState()
+        },
+        _sortOption,
+        _dateRangeFilter
+    ) { notes, sortOption, dateFilter ->
+        val filtered = dateFilter?.let { filter ->
+            notes.filter { it.createdAt in filter.startInclusive..filter.endInclusive }
+        } ?: notes
+        NoteListUiState(
+            notes = filtered.sortedWith(sortOption.comparator),
+            sortOption = sortOption,
+            dateRangeFilter = dateFilter
         )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = NoteListUiState()
+    )
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
+    }
+
+    fun onSortOptionChange(option: SortOption) {
+        _sortOption.value = option
+    }
+
+    fun onDateRangeFilterChange(filter: DateRangeFilter?) {
+        _dateRangeFilter.value = filter
+    }
+
+    fun onClearDateRangeFilter() {
+        _dateRangeFilter.value = null
     }
 
     fun deleteNote(note: Note) {
@@ -54,7 +80,23 @@ class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
     }
 }
 
+enum class SortOption(val label: String, val comparator: Comparator<Note>) {
+    TITLE_ASC("Title A-Z", compareBy { it.title.lowercase() }),
+    TITLE_DESC("Title Z-A", compareByDescending { it.title.lowercase() }),
+    CREATED_NEWEST("Created (newest)", compareByDescending { it.createdAt }),
+    CREATED_OLDEST("Created (oldest)", compareBy { it.createdAt }),
+    MODIFIED_NEWEST("Modified (newest)", compareByDescending { it.modifiedAt }),
+    MODIFIED_OLDEST("Modified (oldest)", compareBy { it.modifiedAt })
+}
+
+data class DateRangeFilter(
+    val startInclusive: Long,
+    val endInclusive: Long
+)
+
 data class NoteListUiState(
     val notes: List<Note> = emptyList(),
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val sortOption: SortOption = SortOption.MODIFIED_NEWEST,
+    val dateRangeFilter: DateRangeFilter? = null
 )

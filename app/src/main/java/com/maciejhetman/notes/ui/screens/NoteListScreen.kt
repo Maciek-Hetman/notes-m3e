@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Search
@@ -32,10 +36,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
@@ -48,6 +57,7 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -65,7 +75,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.Note
+import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
+import com.maciejhetman.notes.ui.viewmodel.SortOption
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -83,60 +95,131 @@ fun NoteListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var showDateRangePicker by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            SearchBar(
-                inputField = {
-                    SearchBarDefaults.InputField(
-                        query = searchQuery,
-                        onQueryChange = { viewModel.onSearchQueryChange(it) },
-                        onSearch = { },
-                        expanded = false,
-                        onExpandedChange = { },
-                        placeholder = {
+            Column {
+                SearchBar(
+                    inputField = {
+                        SearchBarDefaults.InputField(
+                            query = searchQuery,
+                            onQueryChange = { viewModel.onSearchQueryChange(it) },
+                            onSearch = { },
+                            expanded = false,
+                            onExpandedChange = { },
+                            placeholder = {
+                                Text(
+                                    "Search notes…",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingIcon = {
+                                AnimatedVisibility(
+                                    visible = searchQuery.isNotEmpty(),
+                                    enter = fadeIn(),
+                                    exit = fadeOut()
+                                ) {
+                                    IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                    }
+                                }
+                            }
+                        )
+                    },
+                    expanded = false,
+                    onExpandedChange = { },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box {
+                        FilterChip(
+                            selected = uiState.sortOption != SortOption.MODIFIED_NEWEST,
+                            onClick = { sortMenuExpanded = true },
+                            label = { Text(uiState.sortOption.label) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            SortOption.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    onClick = {
+                                        viewModel.onSortOptionChange(option)
+                                        sortMenuExpanded = false
+                                    },
+                                    leadingIcon = if (option == uiState.sortOption) {
+                                        { Icon(Icons.Default.Check, contentDescription = null) }
+                                    } else null
+                                )
+                            }
+                        }
+                    }
+
+                    FilterChip(
+                        selected = uiState.dateRangeFilter != null,
+                        onClick = { showDateRangePicker = true },
+                        label = {
                             Text(
-                                "Search notes…",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                uiState.dateRangeFilter?.let { formatDateRange(it) } ?: "Date range"
                             )
                         },
                         leadingIcon = {
                             Icon(
-                                Icons.Default.Search,
+                                Icons.Default.DateRange,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                                modifier = Modifier.size(18.dp)
                             )
                         },
-                        trailingIcon = {
-                            AnimatedVisibility(
-                                visible = searchQuery.isNotEmpty(),
-                                enter = fadeIn(),
-                                exit = fadeOut()
-                            ) {
-                                IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
-                                }
+                        trailingIcon = if (uiState.dateRangeFilter != null) {
+                            {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Clear date filter",
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable { viewModel.onClearDateRangeFilter() }
+                                )
                             }
-                        }
+                        } else null
                     )
-                },
-                expanded = false,
-                onExpandedChange = { },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) { }
+                }
+            }
         },
         floatingActionButton = {
-            LargeFloatingActionButton(
+            FloatingActionButton(
                 onClick = onAddNoteClick,
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(24.dp)
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Note", modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.Add, contentDescription = "Add Note", modifier = Modifier.size(24.dp))
             }
         }
     ) { innerPadding ->
@@ -148,7 +231,7 @@ fun NoteListScreen(
             if (uiState.notes.isEmpty()) {
                 // ── Empty state ──────────────────────────────────────────
                 EmptyNotesPlaceholder(
-                    isSearching = searchQuery.isNotEmpty(),
+                    isSearching = searchQuery.isNotEmpty() || uiState.dateRangeFilter != null,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -213,6 +296,78 @@ fun NoteListScreen(
             }
         )
     }
+
+    if (showDateRangePicker) {
+        DateRangeFilterDialog(
+            initialFilter = uiState.dateRangeFilter,
+            onDismiss = { showDateRangePicker = false },
+            onConfirm = { filter ->
+                viewModel.onDateRangeFilterChange(filter)
+                showDateRangePicker = false
+            }
+        )
+    }
+}
+
+private const val END_OF_DAY_OFFSET_MS = 24 * 60 * 60 * 1000L - 1L
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateRangeFilterDialog(
+    initialFilter: DateRangeFilter?,
+    onDismiss: () -> Unit,
+    onConfirm: (DateRangeFilter) -> Unit
+) {
+    val dateRangePickerState = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initialFilter?.startInclusive,
+        initialSelectedEndDateMillis = initialFilter?.endInclusive?.minus(END_OF_DAY_OFFSET_MS)
+    )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val start = dateRangePickerState.selectedStartDateMillis
+                    val end = dateRangePickerState.selectedEndDateMillis ?: start
+                    if (start != null && end != null) {
+                        onConfirm(
+                            DateRangeFilter(
+                                startInclusive = start,
+                                endInclusive = end + END_OF_DAY_OFFSET_MS
+                            )
+                        )
+                    }
+                },
+                enabled = dateRangePickerState.selectedStartDateMillis != null
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    ) {
+        DateRangePicker(
+            state = dateRangePickerState,
+            modifier = Modifier.weight(1f),
+            title = {
+                Text(
+                    "Filter notes by created date",
+                    modifier = Modifier.padding(start = 24.dp, top = 16.dp)
+                )
+            }
+        )
+    }
+}
+
+private fun formatDateRange(filter: DateRangeFilter): String {
+    val formatter = SimpleDateFormat("MMM d", Locale.getDefault())
+    val start = formatter.format(Date(filter.startInclusive))
+    val end = formatter.format(Date(filter.endInclusive))
+    return "$start – $end"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
