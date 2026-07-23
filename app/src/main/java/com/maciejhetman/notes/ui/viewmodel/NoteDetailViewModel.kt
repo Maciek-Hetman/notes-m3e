@@ -64,6 +64,9 @@ class NoteDetailViewModel(
 
     fun saveNote() {
         autoSaveJob?.cancel()
+        // Nothing pending — the note was only opened/viewed, not edited. Skip the write
+        // entirely so simply navigating into a note never bumps its modified timestamp.
+        if (_uiState.value.savedState != SavedState.Unsaved) return
         viewModelScope.launch {
             performSave()
             _uiState.update { it.copy(savedState = SavedState.Saved) }
