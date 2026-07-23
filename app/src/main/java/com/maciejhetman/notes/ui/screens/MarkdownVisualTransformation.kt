@@ -123,6 +123,22 @@ class MarkdownVisualTransformation(
         // Track code span ranges so we don't style inside them
         val codeRanges = mutableListOf<IntRange>()
 
+        // Style applied to emphasis delimiters (*, **, ***, _) so they shrink and
+        // blend into the background instead of competing with the actual content.
+        val markerStyle = SpanStyle(color = onSurfaceColor.copy(alpha = 0.3f), fontSize = 11.sp)
+
+        // A delimiter is fully hidden (zero advance width) — used for code span backticks,
+        // which should disappear entirely rather than just blend in.
+        val hiddenDelimiterStyle = SpanStyle(color = Color.Transparent, fontSize = 0.sp)
+
+        fun hideDelimiter(start: Int, length: Int) {
+            addStyle(hiddenDelimiterStyle, start, start + length)
+        }
+
+        fun dimDelimiter(start: Int, length: Int) {
+            addStyle(markerStyle, start, start + length)
+        }
+
         // Inline code — first pass
         Regex("`([^`\n]+)`").findAll(text).forEach { match ->
             codeRanges += match.range
@@ -134,6 +150,9 @@ class MarkdownVisualTransformation(
                 ),
                 match.range.first, match.range.last + 1
             )
+            // Make the surrounding backticks disappear entirely.
+            hideDelimiter(match.range.first, 1)
+            hideDelimiter(match.range.last, 1)
         }
 
         fun IntRange.isInsideCode() = codeRanges.any { it.first <= first && last <= it.last }
@@ -145,6 +164,8 @@ class MarkdownVisualTransformation(
                     SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic),
                     match.range.first, match.range.last + 1
                 )
+                dimDelimiter(match.range.first, 3)
+                dimDelimiter(match.range.last - 2, 3)
             }
         }
 
@@ -152,6 +173,8 @@ class MarkdownVisualTransformation(
         Regex("\\*\\*([^*\n]+?)\\*\\*").findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontWeight = FontWeight.Bold), match.range.first, match.range.last + 1)
+                dimDelimiter(match.range.first, 2)
+                dimDelimiter(match.range.last - 1, 2)
             }
         }
 
@@ -159,6 +182,8 @@ class MarkdownVisualTransformation(
         Regex("(?<![*])\\*([^*\n]+?)\\*(?![*])").findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontStyle = FontStyle.Italic), match.range.first, match.range.last + 1)
+                dimDelimiter(match.range.first, 1)
+                dimDelimiter(match.range.last, 1)
             }
         }
 
@@ -166,6 +191,8 @@ class MarkdownVisualTransformation(
         Regex("_([^_\n]+?)_").findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontStyle = FontStyle.Italic), match.range.first, match.range.last + 1)
+                dimDelimiter(match.range.first, 1)
+                dimDelimiter(match.range.last, 1)
             }
         }
 
