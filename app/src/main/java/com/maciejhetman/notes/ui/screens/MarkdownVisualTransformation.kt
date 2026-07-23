@@ -32,27 +32,92 @@ class MarkdownVisualTransformation(
     private val containerWidthDp: Float = 320f
 ) : VisualTransformation {
 
+    companion object {
+        // Fenced code block: ```language\n ...body... \n```
+        // The language tag is optional; body is captured as a single (possibly multi-line) group.
+        private val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
+    }
+
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
-        // Replace list hyphens/asterisks with a dot, preserving length
-        val modifiedRaw = raw.replace(Regex("(?m)^(\\s*)[-*] (?!(\\[[ xX]\\]))"), "$1• ")
+        val fencedMatches = FENCED_CODE_REGEX.findAll(raw).toList()
+        fun isInsideFence(range: IntRange) = fencedMatches.any { it.range.first <= range.first && range.last <= it.range.last }
+
+        // Replace list hyphens/asterisks with a dot, preserving length — but leave fenced
+        // code bodies untouched (e.g. a shell comment starting with "- " shouldn't become a bullet).
+        val listMarkerRegex = Regex("(?m)^(\\s*)[-*] (?!(\\[[ xX]\\]))")
+        val modifiedRaw = listMarkerRegex.replace(raw) { match ->
+            if (isInsideFence(match.range)) match.value else "${match.groupValues[1]}• "
+        }
 
         val annotated = buildAnnotatedString {
             append(modifiedRaw)
-            applyBlockStyles(modifiedRaw)
-            applyInlineStyles(modifiedRaw)
+            applyBlockStyles(modifiedRaw, fencedMatches)
+            applyFencedCodeBlocks(fencedMatches)
+            applyInlineStyles(modifiedRaw, fencedMatches)
         }
         return TransformedText(annotated, OffsetMapping.Identity)
     }
 
+    // ── Fenced code blocks (```lang ... ```) ────────────────────────────────
+
+    private fun AnnotatedString.Builder.applyFencedCodeBlocks(fencedMatches: List<MatchResult>) {
+        val hiddenFenceStyle = SpanStyle(color = Color.Transparent, fontSize = 0.sp)
+
+        for (match in fencedMatches) {
+            val language = match.groupValues[1]
+            val content = match.groupValues[2]
+
+            val openFenceStart = match.range.first
+            val langStart = openFenceStart + 3
+            val langEnd = langStart + language.length
+            val contentStart = langEnd + 1 // skip the newline after the language tag
+            val contentEnd = contentStart + content.length
+            val closeFenceStart = contentEnd + 1 // skip the newline before the closing fence
+            val closeFenceEnd = closeFenceStart + 3
+
+            // Make the ``` fences disappear entirely, just like inline code backticks.
+            addStyle(hiddenFenceStyle, openFenceStart, langStart)
+            addStyle(hiddenFenceStyle, closeFenceStart, closeFenceEnd)
+
+            // Dim the language tag into a small caption instead of hiding it — it's useful context.
+            if (language.isNotEmpty()) {
+                addStyle(
+                    SpanStyle(
+                        color = onSurfaceColor.copy(alpha = 0.4f),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    langStart, langEnd
+                )
+            }
+
+            // The code body itself: monospace font with a highlighted background, same treatment
+            // as inline code but spanning every line of the block.
+            if (contentEnd > contentStart) {
+                addStyle(
+                    SpanStyle(
+                        fontFamily = FontFamily.Monospace,
+                        background = codeBackground,
+                        fontSize = 13.sp
+                    ),
+                    contentStart, contentEnd
+                )
+            }
+        }
+    }
+
     // ── Block-level (per line) ─────────────────────────────────────────────
 
-    private fun AnnotatedString.Builder.applyBlockStyles(text: String) {
+    private fun AnnotatedString.Builder.applyBlockStyles(text: String, fencedMatches: List<MatchResult>) {
+        fun isInsideFence(pos: Int) = fencedMatches.any { pos in it.range }
+
         var offset = 0
         for (line in text.split('\n')) {
             val lineEnd = (offset + line.length).coerceAtMost(text.length)
 
-            when {
+            if (!isInsideFence(offset)) when {
                 // H4 — must check before H3, H2, H1
                 line.startsWith("#### ") -> {
                     addStyle(SpanStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold), offset, lineEnd)
@@ -119,9 +184,10 @@ class MarkdownVisualTransformation(
 
     // ── Inline styles ──────────────────────────────────────────────────────
 
-    private fun AnnotatedString.Builder.applyInlineStyles(text: String) {
-        // Track code span ranges so we don't style inside them
+    private fun AnnotatedString.Builder.applyInlineStyles(text: String, fencedMatches: List<MatchResult>) {
+        // Track code span ranges (fenced blocks + single-line `code`) so nothing else styles inside them.
         val codeRanges = mutableListOf<IntRange>()
+        fencedMatches.forEach { codeRanges += it.range }
 
         // Style applied to emphasis delimiters (*, **, ***, _) so they shrink and
         // blend into the background instead of competing with the actual content.
@@ -139,23 +205,25 @@ class MarkdownVisualTransformation(
             addStyle(markerStyle, start, start + length)
         }
 
-        // Inline code — first pass
-        Regex("`([^`\n]+)`").findAll(text).forEach { match ->
-            codeRanges += match.range
-            addStyle(
-                SpanStyle(
-                    fontFamily = FontFamily.Monospace,
-                    background = codeBackground,
-                    fontSize = 13.sp
-                ),
-                match.range.first, match.range.last + 1
-            )
-            // Make the surrounding backticks disappear entirely.
-            hideDelimiter(match.range.first, 1)
-            hideDelimiter(match.range.last, 1)
-        }
-
         fun IntRange.isInsideCode() = codeRanges.any { it.first <= first && last <= it.last }
+
+        // Inline code — first pass (skip anything already inside a fenced block)
+        Regex("`([^`\n]+)`").findAll(text).forEach { match ->
+            if (!match.range.isInsideCode()) {
+                codeRanges += match.range
+                addStyle(
+                    SpanStyle(
+                        fontFamily = FontFamily.Monospace,
+                        background = codeBackground,
+                        fontSize = 13.sp
+                    ),
+                    match.range.first, match.range.last + 1
+                )
+                // Make the surrounding backticks disappear entirely.
+                hideDelimiter(match.range.first, 1)
+                hideDelimiter(match.range.last, 1)
+            }
+        }
 
         // Bold + italic ***text***
         Regex("\\*{3}([^*\n]+?)\\*{3}").findAll(text).forEach { match ->

@@ -39,21 +39,41 @@ private sealed class MarkdownBlock {
     data class OrderedItem(val index: Int, val text: String) : MarkdownBlock()
     data class BlockQuote(val text: String) : MarkdownBlock()
     data class Image(val path: String, val alt: String) : MarkdownBlock()
+    data class CodeBlock(val language: String, val code: String) : MarkdownBlock()
     object HorizontalRule : MarkdownBlock()
     object BlankLine : MarkdownBlock()
 }
 
 // ─── Parser ─────────────────────────────────────────────────────────────────
 
+private val FENCE_REGEX = Regex("^```([^\n]*)$")
+
 private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
     val lines = markdown.lines()
     val blocks = mutableListOf<MarkdownBlock>()
     var orderedIndex = 1
+    var i = 0
 
-    for (line in lines) {
+    while (i < lines.size) {
+        val line = lines[i]
         val trimmed = line.trimEnd()
+        val fenceMatch = FENCE_REGEX.find(trimmed)
 
         when {
+            // Fenced code block — consume lines until the closing fence (or end of input)
+            fenceMatch != null -> {
+                val language = fenceMatch.groupValues[1].trim()
+                val codeLines = mutableListOf<String>()
+                var j = i + 1
+                while (j < lines.size && lines[j].trimEnd() != "```") {
+                    codeLines += lines[j]
+                    j++
+                }
+                blocks.add(MarkdownBlock.CodeBlock(language, codeLines.joinToString("\n")))
+                orderedIndex = 1
+                i = j + 1
+                continue
+            }
             // Horizontal rule
             trimmed.matches(Regex("^(-{3,}|\\*{3,}|_{3,})$")) -> {
                 blocks.add(MarkdownBlock.HorizontalRule)
@@ -109,6 +129,7 @@ private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
                 orderedIndex = 1
             }
         }
+        i++
     }
     return blocks
 }
@@ -250,6 +271,35 @@ fun MarkdownText(
                     }
                 }
 
+                is MarkdownBlock.CodeBlock -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .background(codeBackground, shape = RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        if (block.language.isNotEmpty()) {
+                            Text(
+                                text = block.language,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    color = onSurface.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        Text(
+                            text = block.code,
+                            style = baseStyle.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 13.sp,
+                                color = onSurface
+                            )
+                        )
+                    }
+                }
+
                 is MarkdownBlock.Paragraph -> {
                     Text(
                         text = parseInline(block.text, codeBackground),
@@ -336,6 +386,8 @@ fun MarkdownText(
  */
 fun stripMarkdown(text: String): String {
     return text
+        .replace(Regex("(?m)^```[^\n]*\n"), "") // Strip fenced code block opening fence + language tag
+        .replace(Regex("(?m)^```[ \t]*$"), "") // Strip fenced code block closing fence
         .replace(Regex("!\\[.*?\\]\\(.*?\\)"), "") // Strip markdown images
         .replace(Regex("\\[(.*?)\\]\\(.*?\\)"), "$1") // Strip markdown links but keep text
         .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
