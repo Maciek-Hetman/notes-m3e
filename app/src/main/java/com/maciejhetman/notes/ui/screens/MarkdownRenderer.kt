@@ -224,6 +224,12 @@ fun MarkdownText(
     val onSurface = MaterialTheme.colorScheme.onSurface
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val quoteAccent = MaterialTheme.colorScheme.primaryContainer
+    val codeHighlightColors = CodeHighlightColors(
+        keyword = MaterialTheme.colorScheme.primary,
+        string = MaterialTheme.colorScheme.tertiary,
+        number = MaterialTheme.colorScheme.secondary,
+        comment = onSurface.copy(alpha = 0.45f)
+    )
 
     Column(modifier = modifier) {
         for ((blockIndex, block) in blocks.withIndex()) {
@@ -290,7 +296,10 @@ fun MarkdownText(
                             )
                         }
                         Text(
-                            text = block.code,
+                            text = buildAnnotatedString {
+                                append(block.code)
+                                applySyntaxHighlighting(block.code, block.language, 0, codeHighlightColors)
+                            },
                             style = baseStyle.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 13.sp,

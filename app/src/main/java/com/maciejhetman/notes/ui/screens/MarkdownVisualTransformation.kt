@@ -29,8 +29,19 @@ class MarkdownVisualTransformation(
     // Width (in dp, expressed as a plain float) that images are actually rendered at.
     // Used so the reserved line-height matches the real displayed width/aspect-ratio
     // instead of an arbitrary assumption — otherwise the image ends up squashed/stretched.
-    private val containerWidthDp: Float = 320f
+    private val containerWidthDp: Float = 320f,
+    // Colors used for syntax highlighting inside fenced code blocks.
+    private val keywordColor: Color = primaryColor,
+    private val stringColor: Color = primaryColor,
+    private val numberColor: Color = primaryColor
 ) : VisualTransformation {
+
+    private val codeHighlightColors = CodeHighlightColors(
+        keyword = keywordColor,
+        string = stringColor,
+        number = numberColor,
+        comment = onSurfaceColor.copy(alpha = 0.45f)
+    )
 
     companion object {
         // Fenced code block: ```language\n ...body... \n```
@@ -104,6 +115,8 @@ class MarkdownVisualTransformation(
                     ),
                     contentStart, contentEnd
                 )
+                // Layer keyword/string/number/comment colors on top based on the language tag.
+                applySyntaxHighlighting(content, language, contentStart, codeHighlightColors)
             }
         }
     }

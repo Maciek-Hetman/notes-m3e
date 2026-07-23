@@ -169,14 +169,20 @@ fun NoteDetailScreen(
     val primaryColor = MaterialTheme.colorScheme.primary
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    val keywordColor = MaterialTheme.colorScheme.primary
+    val stringColor = MaterialTheme.colorScheme.tertiary
+    val numberColor = MaterialTheme.colorScheme.secondary
 
     // Real rendered width of the content field — used so the reserved height for inline
     // images matches their actual displayed width/aspect-ratio (otherwise they look squashed).
     val containerWidthDp = with(density) { containerWidthPx.toDp().value }
 
     // Recreated only when theme colours change
-    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(), containerWidthDp) {
-        MarkdownVisualTransformation(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios, containerWidthDp)
+    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(), containerWidthDp, keywordColor, stringColor, numberColor) {
+        MarkdownVisualTransformation(
+            primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios, containerWidthDp,
+            keywordColor = keywordColor, stringColor = stringColor, numberColor = numberColor
+        )
     }
 
     // ── UI ─────────────────────────────────────────────────────────────────
