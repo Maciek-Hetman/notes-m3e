@@ -47,7 +47,7 @@ fun NotesNavHost() {
                 backStack.removeLastOrNull()
             }
         },
-        sceneStrategy = listDetailStrategy,
+        sceneStrategies = listOf(listDetailStrategy),
         entryDecorators = listOf(
             rememberSaveableStateHolderNavEntryDecorator(),
             rememberViewModelStoreNavEntryDecorator()
