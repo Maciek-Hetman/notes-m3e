@@ -9,4 +9,7 @@ sealed interface Destination : NavKey {
 
     @Serializable
     data class NoteDetail(val noteId: Long? = null) : Destination
+
+    @Serializable
+    data object Settings : Destination
 }

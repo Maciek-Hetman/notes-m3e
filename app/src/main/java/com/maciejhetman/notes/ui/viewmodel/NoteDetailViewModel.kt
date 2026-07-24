@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 class NoteDetailViewModel(
     private val repository: NoteRepository,
@@ -56,7 +57,7 @@ class NoteDetailViewModel(
     private fun scheduleAutoSave() {
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
-            delay(1500)
+            delay(1500.milliseconds)
             performSave()
             _uiState.update { it.copy(savedState = SavedState.Saved) }
         }

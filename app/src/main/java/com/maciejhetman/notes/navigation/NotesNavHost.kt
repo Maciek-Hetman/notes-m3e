@@ -21,15 +21,19 @@ import androidx.navigation3.ui.NavDisplay
 import com.maciejhetman.notes.NotesApplication
 import com.maciejhetman.notes.ui.screens.NoteDetailScreen
 import com.maciejhetman.notes.ui.screens.NoteListScreen
+import com.maciejhetman.notes.ui.screens.SettingsScreen
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
+import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun NotesNavHost() {
     val backStack = rememberNavBackStack(Destination.NoteList)
     val context = LocalContext.current
-    val repository = (context.applicationContext as NotesApplication).repository
+    val application = context.applicationContext as NotesApplication
+    val repository = application.repository
+    val settingsRepository = application.settingsRepository
 
     @Suppress("DEPRECATION")
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
@@ -67,7 +71,26 @@ fun NotesNavHost() {
                 NoteListScreen(
                     viewModel = viewModel,
                     onNoteClick = { noteId -> backStack.add(Destination.NoteDetail(noteId)) },
-                    onAddNoteClick = { backStack.add(Destination.NoteDetail()) }
+                    onAddNoteClick = { backStack.add(Destination.NoteDetail()) },
+                    onSettingsClick = { backStack.add(Destination.Settings) }
+                )
+            }
+            entry<Destination.Settings> {
+                val viewModel: SettingsViewModel = viewModel(
+                    factory = object : ViewModelProvider.Factory {
+                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
+                            return SettingsViewModel(settingsRepository) as T
+                        }
+                    }
+                )
+                SettingsScreen(
+                    viewModel = viewModel,
+                    onBack = {
+                        if (backStack.size > 1) {
+                            backStack.removeLastOrNull()
+                        }
+                    }
                 )
             }
             entry<Destination.NoteDetail>(

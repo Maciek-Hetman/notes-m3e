@@ -2,6 +2,7 @@ package com.maciejhetman.notes.ui.screens
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -11,7 +12,10 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextIndent
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import com.maciejhetman.notes.data.LineNumberMode
 
 /**
  * Obsidian-style Live Preview: applies Markdown visual styles inline without
@@ -19,6 +23,52 @@ import androidx.compose.ui.unit.sp
  * are added or removed — only SpanStyles are layered on top.
  */
 import androidx.compose.ui.text.TextRange
+
+// Fenced code block: ```language\n ...body... \n```
+// The language tag is optional; body is captured as a single (possibly multi-line) group.
+// File-level so it can be shared with computeNumberedLines() below.
+private val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
+
+/** A single logical line eligible for a rendered line-number gutter entry. */
+data class NumberedLine(val startOffset: Int, val endOffsetExclusive: Int, val number: Int)
+
+/**
+ * Computes which lines of [text] should show a line number under [mode], and what number each
+ * gets. Used both to reserve gutter indentation (MarkdownVisualTransformation) and to actually
+ * draw the numbers as an overlay (NoteDetailScreen), so the two stay perfectly in sync.
+ */
+fun computeNumberedLines(text: String, mode: LineNumberMode): List<NumberedLine> {
+    return when (mode) {
+        LineNumberMode.OFF -> emptyList()
+        LineNumberMode.ALL_LINES -> {
+            val result = mutableListOf<NumberedLine>()
+            var offset = 0
+            var lineNumber = 0
+            for (line in text.split('\n')) {
+                lineNumber++
+                val lineEnd = (offset + line.length).coerceAtMost(text.length)
+                if (lineEnd > offset) result += NumberedLine(offset, lineEnd, lineNumber)
+                offset += line.length + 1
+            }
+            result
+        }
+        LineNumberMode.CODE_BLOCKS_ONLY -> {
+            val result = mutableListOf<NumberedLine>()
+            FENCED_CODE_REGEX.findAll(text).forEach { match ->
+                val language = match.groupValues[1]
+                val content = match.groupValues[2]
+                val contentStart = match.range.first + 3 + language.length + 1
+                var lineOffset = contentStart
+                content.split('\n').forEachIndexed { index, line ->
+                    val lineEnd = (lineOffset + line.length).coerceAtMost(text.length)
+                    if (lineEnd > lineOffset) result += NumberedLine(lineOffset, lineEnd, index + 1)
+                    lineOffset += line.length + 1
+                }
+            }
+            result
+        }
+    }
+}
 
 class MarkdownVisualTransformation(
     private val primaryColor: Color,
@@ -33,7 +83,15 @@ class MarkdownVisualTransformation(
     // Colors used for syntax highlighting inside fenced code blocks.
     private val keywordColor: Color = primaryColor,
     private val stringColor: Color = primaryColor,
-    private val numberColor: Color = primaryColor
+    private val numberColor: Color = primaryColor,
+    // Scales every visible font size in this transformation (headings, code, markers) to match
+    // the user's font-size preference. The base body text size is scaled separately by the
+    // caller via the TextField's own textStyle.
+    private val fontScale: Float = 1f,
+    private val lineNumberMode: LineNumberMode = LineNumberMode.OFF,
+    // Indent reserved per numbered line, pre-converted to Sp by the caller (from a Dp gutter
+    // width) so it lines up exactly with the overlay that actually draws the digits.
+    private val gutterWidth: TextUnit = 0.sp
 ) : VisualTransformation {
 
     private val codeHighlightColors = CodeHighlightColors(
@@ -43,11 +101,7 @@ class MarkdownVisualTransformation(
         comment = onSurfaceColor.copy(alpha = 0.45f)
     )
 
-    companion object {
-        // Fenced code block: ```language\n ...body... \n```
-        // The language tag is optional; body is captured as a single (possibly multi-line) group.
-        private val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
-    }
+    private fun scaledSp(base: Float) = (base * fontScale).sp
 
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
@@ -66,8 +120,21 @@ class MarkdownVisualTransformation(
             applyBlockStyles(modifiedRaw, fencedMatches)
             applyFencedCodeBlocks(fencedMatches)
             applyInlineStyles(modifiedRaw, fencedMatches)
+            applyLineNumberIndent(modifiedRaw)
         }
         return TransformedText(annotated, OffsetMapping.Identity)
+    }
+
+    // ── Line numbers ─────────────────────────────────────────────────────
+
+    private fun AnnotatedString.Builder.applyLineNumberIndent(text: String) {
+        if (lineNumberMode == LineNumberMode.OFF || gutterWidth.value <= 0f) return
+        computeNumberedLines(text, lineNumberMode).forEach { line ->
+            addStyle(
+                ParagraphStyle(textIndent = TextIndent(gutterWidth, gutterWidth)),
+                line.startOffset, line.endOffsetExclusive
+            )
+        }
     }
 
     // ── Fenced code blocks (```lang ... ```) ────────────────────────────────
@@ -97,7 +164,7 @@ class MarkdownVisualTransformation(
                     SpanStyle(
                         color = onSurfaceColor.copy(alpha = 0.4f),
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
+                        fontSize = scaledSp(12f),
                         fontWeight = FontWeight.Medium
                     ),
                     langStart, langEnd
@@ -111,7 +178,7 @@ class MarkdownVisualTransformation(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
                         background = codeBackground,
-                        fontSize = 13.sp
+                        fontSize = scaledSp(13f)
                     ),
                     contentStart, contentEnd
                 )
@@ -133,24 +200,24 @@ class MarkdownVisualTransformation(
             if (!isInsideFence(offset)) when {
                 // H4 — must check before H3, H2, H1
                 line.startsWith("#### ") -> {
-                    addStyle(SpanStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold), offset, lineEnd)
-                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 11.sp), offset, (offset + 5).coerceAtMost(lineEnd))
+                    addStyle(SpanStyle(fontSize = scaledSp(15f), fontWeight = FontWeight.SemiBold), offset, lineEnd)
+                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = scaledSp(11f)), offset, (offset + 5).coerceAtMost(lineEnd))
                 }
                 // H3 — must check before H2 and H1
                 line.startsWith("### ") -> {
-                    addStyle(SpanStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold), offset, lineEnd)
+                    addStyle(SpanStyle(fontSize = scaledSp(17f), fontWeight = FontWeight.SemiBold), offset, lineEnd)
                     // Dim the ### marker
-                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), offset, (offset + 4).coerceAtMost(lineEnd))
+                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = scaledSp(12f)), offset, (offset + 4).coerceAtMost(lineEnd))
                 }
                 // H2 — must check before H1
                 line.startsWith("## ") -> {
-                    addStyle(SpanStyle(fontSize = 21.sp, fontWeight = FontWeight.Bold), offset, lineEnd)
-                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 14.sp), offset, (offset + 3).coerceAtMost(lineEnd))
+                    addStyle(SpanStyle(fontSize = scaledSp(21f), fontWeight = FontWeight.Bold), offset, lineEnd)
+                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = scaledSp(14f)), offset, (offset + 3).coerceAtMost(lineEnd))
                 }
                 // H1
                 line.startsWith("# ") -> {
-                    addStyle(SpanStyle(fontSize = 26.sp, fontWeight = FontWeight.ExtraBold), offset, lineEnd)
-                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 17.sp), offset, (offset + 2).coerceAtMost(lineEnd))
+                    addStyle(SpanStyle(fontSize = scaledSp(26f), fontWeight = FontWeight.ExtraBold), offset, lineEnd)
+                    addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = scaledSp(17f)), offset, (offset + 2).coerceAtMost(lineEnd))
                 }
                 // Blockquote
                 line.startsWith("> ") -> {
@@ -168,7 +235,7 @@ class MarkdownVisualTransformation(
                     addStyle(
                         SpanStyle(
                             color = Color.Transparent,
-                            fontSize = 20.sp,
+                            fontSize = scaledSp(20f),
                             textGeometricTransform = androidx.compose.ui.text.style.TextGeometricTransform(scaleX = 0.55f)
                         ),
                         offset + spaceCount, (offset + spaceCount + 6).coerceAtMost(lineEnd)
@@ -204,7 +271,7 @@ class MarkdownVisualTransformation(
 
         // Style applied to emphasis delimiters (*, **, ***, _) so they shrink and
         // blend into the background instead of competing with the actual content.
-        val markerStyle = SpanStyle(color = onSurfaceColor.copy(alpha = 0.3f), fontSize = 11.sp)
+        val markerStyle = SpanStyle(color = onSurfaceColor.copy(alpha = 0.3f), fontSize = scaledSp(11f))
 
         // A delimiter is fully hidden (zero advance width) — used for code span backticks,
         // which should disappear entirely rather than just blend in.
@@ -228,7 +295,7 @@ class MarkdownVisualTransformation(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
                         background = codeBackground,
-                        fontSize = 13.sp
+                        fontSize = scaledSp(13f)
                     ),
                     match.range.first, match.range.last + 1
                 )
@@ -282,8 +349,8 @@ class MarkdownVisualTransformation(
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(textDecoration = TextDecoration.Underline), match.range.first, match.range.last + 1)
                 // Dim the tags
-                addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), match.range.first, match.range.first + 3)
-                addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = 12.sp), match.range.last - 3, match.range.last + 1)
+                addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = scaledSp(12f)), match.range.first, match.range.first + 3)
+                addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.35f), fontSize = scaledSp(12f)), match.range.last - 3, match.range.last + 1)
             }
         }
 
@@ -296,7 +363,7 @@ class MarkdownVisualTransformation(
                         SpanStyle(
                             color = primaryColor.copy(alpha = 0.45f),
                             fontStyle = FontStyle.Italic,
-                            fontSize = 13.sp
+                            fontSize = scaledSp(13f)
                         ),
                         match.range.first, match.range.last + 1
                     )

@@ -102,6 +102,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maciejhetman.notes.data.LineNumberMode
+import com.maciejhetman.notes.ui.theme.LocalAppSettings
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
 import kotlinx.coroutines.delay
@@ -173,15 +175,27 @@ fun NoteDetailScreen(
     val stringColor = MaterialTheme.colorScheme.tertiary
     val numberColor = MaterialTheme.colorScheme.secondary
 
+    // User preferences (font size, line numbering) — provided app-wide from Settings.
+    val appSettings = LocalAppSettings.current
+    val fontScale = appSettings.fontSize.scale
+    // Width reserved for line-number digits; kept in both Dp (for the overlay Text below) and
+    // Sp (for the transformation's paragraph indent) so the two line up pixel-for-pixel.
+    val gutterWidthDp = (32f * fontScale).dp
+    val gutterWidthSp = with(density) { gutterWidthDp.toSp() }
+
     // Real rendered width of the content field — used so the reserved height for inline
     // images matches their actual displayed width/aspect-ratio (otherwise they look squashed).
     val containerWidthDp = with(density) { containerWidthPx.toDp().value }
 
-    // Recreated only when theme colours change
-    val markdownTransformation = remember(primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(), containerWidthDp, keywordColor, stringColor, numberColor) {
+    // Recreated only when theme colours or user preferences change
+    val markdownTransformation = remember(
+        primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(),
+        containerWidthDp, keywordColor, stringColor, numberColor, fontScale, appSettings.lineNumberMode, gutterWidthSp
+    ) {
         MarkdownVisualTransformation(
             primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios, containerWidthDp,
-            keywordColor = keywordColor, stringColor = stringColor, numberColor = numberColor
+            keywordColor = keywordColor, stringColor = stringColor, numberColor = numberColor,
+            fontScale = fontScale, lineNumberMode = appSettings.lineNumberMode, gutterWidth = gutterWidthSp
         )
     }
 
@@ -447,6 +461,7 @@ fun NoteDetailScreen(
                         },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                         color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale).sp,
                         // Explicitly Unspecified (not just "not overridden") — bodyLarge itself carries a
                         // baked-in lineHeight, and ANY fixed lineHeight forces every line in this field to
                         // that exact height, clamping lines that contain an oversized run back down. That
@@ -465,6 +480,7 @@ fun NoteDetailScreen(
                                     "Start writing…",
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                                        fontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale).sp,
                                         lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
                                     )
                                 )
@@ -473,6 +489,30 @@ fun NoteDetailScreen(
                             
                             textLayoutResult?.let { layoutResult ->
                                 if (contentFieldValue.text.isEmpty()) return@let
+
+                                if (appSettings.lineNumberMode != LineNumberMode.OFF) {
+                                    val numberedLines = computeNumberedLines(contentFieldValue.text, appSettings.lineNumberMode)
+                                    for (numbered in numberedLines) {
+                                        val safeOffset = numbered.startOffset.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
+                                        if (safeOffset >= layoutResult.layoutInput.text.length) continue
+                                        val lineIndex = layoutResult.getLineForOffset(safeOffset)
+                                        val top = layoutResult.getLineTop(lineIndex)
+                                        Text(
+                                            text = numbered.number.toString(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                                                fontSize = (MaterialTheme.typography.labelSmall.fontSize.value * fontScale).sp
+                                            ),
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                                            modifier = Modifier
+                                                .offset { IntOffset(0, top.toInt()) }
+                                                .width(gutterWidthDp)
+                                                .padding(end = 6.dp)
+                                        )
+                                    }
+                                }
+
                                 val matches = Regex("(?m)^\\s*- \\[[ xX]\\] ").findAll(contentFieldValue.text)
                                 for (match in matches) {
                                     val isChecked = match.value.contains("x", ignoreCase = true)

@@ -1,10 +1,8 @@
 package com.maciejhetman.notes.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +30,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -92,7 +91,8 @@ import java.util.Locale
 fun NoteListScreen(
     viewModel: NoteListViewModel,
     onNoteClick: (Long) -> Unit,
-    onAddNoteClick: () -> Unit
+    onAddNoteClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.notesUiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -129,13 +129,22 @@ fun NoteListScreen(
                                 )
                             },
                             trailingIcon = {
-                                AnimatedVisibility(
-                                    visible = searchQuery.isNotEmpty(),
-                                    enter = fadeIn(),
-                                    exit = fadeOut()
-                                ) {
-                                    IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                // Crossfade between the two trailing actions so both always occupy
+                                // the exact same slot as the built-in search-bar chrome — guarantees
+                                // the settings icon is vertically centered exactly like Clear is.
+                                Crossfade(targetState = searchQuery.isNotEmpty(), label = "search_trailing_icon") { hasQuery ->
+                                    if (hasQuery) {
+                                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                        }
+                                    } else {
+                                        IconButton(onClick = onSettingsClick) {
+                                            Icon(
+                                                Icons.Default.Settings,
+                                                contentDescription = "Settings",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }

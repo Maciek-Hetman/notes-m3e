@@ -3,6 +3,7 @@ package com.maciejhetman.notes.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
@@ -12,9 +13,11 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.maciejhetman.notes.data.ThemeMode
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
@@ -62,14 +65,34 @@ private val LightColorScheme = lightColorScheme(
     onSurface = OnSurfaceLight,
 )
 
+// True-black overrides layered on top of a resolved dark scheme for AMOLED displays. Accent
+// colors (primary/secondary/tertiary) are left untouched — only surfaces are crushed to black.
+private fun ColorScheme.toAmoled(): ColorScheme = copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceDim = Color.Black,
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF0A0A0A),
+    surfaceContainer = Color(0xFF101010),
+    surfaceContainerHigh = Color(0xFF181818),
+    surfaceContainerHighest = Color(0xFF222222)
+)
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NotesTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
+    amoledBlack: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -78,7 +101,7 @@ fun NotesTheme(
 
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
-    }
+    }.let { scheme -> if (darkTheme && amoledBlack) scheme.toAmoled() else scheme }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
