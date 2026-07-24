@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Static fallback for android:windowBackground, matching the Compose light background
+         (BackgroundLight in Color.kt) so there is no flash before/between Compose frames.
+         The real color is kept in sync at runtime by NotesTheme for dark/AMOLED/dynamic color. -->
+    <color name="window_background">#FFFFF8F5</color>
+</resources>
