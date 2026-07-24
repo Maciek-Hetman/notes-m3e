@@ -1,19 +1,24 @@
 package com.maciejhetman.notes.ui.theme
 
 import android.app.Activity
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -104,17 +109,29 @@ fun NotesTheme(
     }.let { scheme -> if (darkTheme && amoledBlack) scheme.toAmoled() else scheme }
 
     val view = LocalView.current
+    val backgroundArgb = colorScheme.background.toArgb()
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            // Keep the raw window background in sync with the current theme. Without this it
+            // stays whatever the static Activity theme declares (white), which briefly flashes
+            // through during nav transitions/config changes since Compose only paints inside the
+            // Surface below, not the window itself.
+            window.setBackgroundDrawable(ColorDrawable(backgroundArgb))
         }
     }
 
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        motionScheme = MotionScheme.expressive(),
-        content = content
-    )
+        motionScheme = MotionScheme.expressive()
+    ) {
+        // A full-bleed opaque Surface behind all navigation content so that any gap revealed
+        // during scene transitions shows the correct themed background instead of the window's
+        // default (white) background peeking through.
+        Surface(modifier = Modifier.fillMaxSize(), color = colorScheme.background) {
+            content()
+        }
+    }
 }

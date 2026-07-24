@@ -1,5 +1,14 @@
 package com.maciejhetman.notes.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
@@ -25,6 +34,9 @@ import com.maciejhetman.notes.ui.screens.SettingsScreen
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
 import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
+
+// Shared timing for every nav transition below, tuned to feel snappy without being abrupt.
+private const val NAV_ANIMATION_DURATION_MS = 320
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -56,6 +68,36 @@ fun NotesNavHost() {
             rememberSaveableStateHolderNavEntryDecorator(),
             rememberViewModelStoreNavEntryDecorator()
         ),
+        // Material "shared axis" (X) — the pattern most native Android apps (Settings, Gmail,
+        // system apps) use for hierarchical navigation: a small horizontal shift combined with a
+        // cross-fade, rather than a full off-screen slide. Forward: new content enters from a bit
+        // right of center while the old content shifts left as it fades.
+        transitionSpec = {
+            (
+                slideInHorizontally(tween(NAV_ANIMATION_DURATION_MS)) { fullWidth -> fullWidth / 10 } +
+                    fadeIn(tween(NAV_ANIMATION_DURATION_MS))
+            ) togetherWith (
+                slideOutHorizontally(tween(NAV_ANIMATION_DURATION_MS)) { fullWidth -> -fullWidth / 10 } +
+                    fadeOut(tween(NAV_ANIMATION_DURATION_MS))
+            )
+        },
+        // Mirror image of the push above for backward navigation.
+        popTransitionSpec = {
+            (
+                slideInHorizontally(tween(NAV_ANIMATION_DURATION_MS)) { fullWidth -> -fullWidth / 10 } +
+                    fadeIn(tween(NAV_ANIMATION_DURATION_MS))
+            ) togetherWith (
+                slideOutHorizontally(tween(NAV_ANIMATION_DURATION_MS)) { fullWidth -> fullWidth / 10 } +
+                    fadeOut(tween(NAV_ANIMATION_DURATION_MS))
+            )
+        },
+        // Predictive back (Android 13+/14+ system gesture): the current screen shrinks and fades
+        // slightly in place — no slide — so the revealed previous screen underneath reads as a
+        // live preview that tracks the swipe, matching the system's own predictive-back affordance.
+        predictivePopTransitionSpec = {
+            fadeIn(tween(NAV_ANIMATION_DURATION_MS)) togetherWith
+                (fadeOut(tween(NAV_ANIMATION_DURATION_MS)) + scaleOut(targetScale = 0.92f))
+        },
         entryProvider = entryProvider {
             entry<Destination.NoteList>(
                 metadata = ListDetailSceneStrategy.listPane()
@@ -75,7 +117,21 @@ fun NotesNavHost() {
                     onSettingsClick = { backStack.add(Destination.Settings) }
                 )
             }
-            entry<Destination.Settings> {
+            entry<Destination.Settings>(
+                // Settings is reached via a gear icon rather than drilling into content, so it
+                // gets a distinct vertical shared-axis (Y) transition instead of the horizontal one.
+                metadata = NavDisplay.transitionSpec {
+                    (
+                        slideInVertically(tween(NAV_ANIMATION_DURATION_MS)) { fullHeight -> fullHeight / 8 } +
+                            fadeIn(tween(NAV_ANIMATION_DURATION_MS))
+                    ) togetherWith fadeOut(tween(NAV_ANIMATION_DURATION_MS / 2))
+                } + NavDisplay.popTransitionSpec {
+                    fadeIn(tween(NAV_ANIMATION_DURATION_MS / 2)) togetherWith (
+                        slideOutVertically(tween(NAV_ANIMATION_DURATION_MS)) { fullHeight -> fullHeight / 8 } +
+                            fadeOut(tween(NAV_ANIMATION_DURATION_MS))
+                    )
+                }
+            ) {
                 val viewModel: SettingsViewModel = viewModel(
                     factory = object : ViewModelProvider.Factory {
                         override fun <T : ViewModel> create(modelClass: Class<T>): T {
