@@ -38,6 +38,13 @@ import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
 // Shared timing for every nav transition below, tuned to feel snappy without being abrupt.
 private const val NAV_ANIMATION_DURATION_MS = 320
 
+/** Builds a single-purpose [ViewModelProvider.Factory] that always constructs [builder]'s result. */
+private fun <T : ViewModel> viewModelFactory(builder: () -> T): ViewModelProvider.Factory =
+    object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <VM : ViewModel> create(modelClass: Class<VM>): VM = builder() as VM
+    }
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun NotesNavHost() {
@@ -103,12 +110,7 @@ fun NotesNavHost() {
                 metadata = ListDetailSceneStrategy.listPane()
             ) {
                 val viewModel: NoteListViewModel = viewModel(
-                    factory = object : ViewModelProvider.Factory {
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                            @Suppress("UNCHECKED_CAST")
-                            return NoteListViewModel(repository) as T
-                        }
-                    }
+                    factory = viewModelFactory { NoteListViewModel(repository) }
                 )
                 NoteListScreen(
                     viewModel = viewModel,
@@ -133,12 +135,7 @@ fun NotesNavHost() {
                 }
             ) {
                 val viewModel: SettingsViewModel = viewModel(
-                    factory = object : ViewModelProvider.Factory {
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                            @Suppress("UNCHECKED_CAST")
-                            return SettingsViewModel(settingsRepository) as T
-                        }
-                    }
+                    factory = viewModelFactory { SettingsViewModel(settingsRepository) }
                 )
                 SettingsScreen(
                     viewModel = viewModel,
@@ -154,12 +151,7 @@ fun NotesNavHost() {
             ) { key ->
                 val viewModel: NoteDetailViewModel = viewModel(
                     key = "note_${key.noteId}",
-                    factory = object : ViewModelProvider.Factory {
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                            @Suppress("UNCHECKED_CAST")
-                            return NoteDetailViewModel(repository, key.noteId) as T
-                        }
-                    }
+                    factory = viewModelFactory { NoteDetailViewModel(repository, key.noteId) }
                 )
                 NoteDetailScreen(
                     viewModel = viewModel,

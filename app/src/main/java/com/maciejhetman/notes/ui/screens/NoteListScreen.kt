@@ -324,6 +324,13 @@ fun NoteListScreen(
 
 private const val END_OF_DAY_OFFSET_MS = 24 * 60 * 60 * 1000L - 1L
 
+// SimpleDateFormat is expensive to construct and not thread-safe to share across threads, but
+// these two formatters are only ever touched from the main thread here, so caching one instance
+// each avoids re-parsing the pattern string on every note item / date range render.
+private val MONTH_DAY_FORMATTER = SimpleDateFormat("MMM d", Locale.getDefault())
+
+private val NOTE_PREVIEW_IMAGE_REGEX = Regex("!\\[.*?\\]\\((.*?)\\)")
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DateRangeFilterDialog(
@@ -377,9 +384,8 @@ private fun DateRangeFilterDialog(
 }
 
 private fun formatDateRange(filter: DateRangeFilter): String {
-    val formatter = SimpleDateFormat("MMM d", Locale.getDefault())
-    val start = formatter.format(Date(filter.startInclusive))
-    val end = formatter.format(Date(filter.endInclusive))
+    val start = MONTH_DAY_FORMATTER.format(Date(filter.startInclusive))
+    val end = MONTH_DAY_FORMATTER.format(Date(filter.endInclusive))
     return "$start – $end"
 }
 
@@ -452,9 +458,8 @@ fun NoteItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val imageRegex = remember { Regex("!\\[.*?\\]\\((.*?)\\)") }
     val firstImagePath = remember(note.content) {
-        imageRegex.find(note.content)?.groupValues?.getOrNull(1)
+        NOTE_PREVIEW_IMAGE_REGEX.find(note.content)?.groupValues?.getOrNull(1)
     }
 
     Card(
@@ -584,6 +589,6 @@ private fun formatTimestamp(timestamp: Long): String {
         diff < 60_000 -> "Just now"
         diff < 3_600_000 -> "${diff / 60_000}m ago"
         diff < 86_400_000 -> "${diff / 3_600_000}h ago"
-        else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
+        else -> MONTH_DAY_FORMATTER.format(Date(timestamp))
     }
 }

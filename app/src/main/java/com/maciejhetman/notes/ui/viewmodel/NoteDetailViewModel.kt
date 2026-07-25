@@ -103,7 +103,9 @@ class NoteDetailViewModel(
                     Note(
                         id = state.id,
                         title = state.title,
-                        content = state.content
+                        content = state.content,
+                        createdAt = state.createdAt,
+                        modifiedAt = state.modifiedAt
                     )
                 )
             }

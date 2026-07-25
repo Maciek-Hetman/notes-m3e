@@ -17,6 +17,7 @@ import androidx.compose.material3.Card
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -47,6 +48,10 @@ private sealed class MarkdownBlock {
 // ─── Parser ─────────────────────────────────────────────────────────────────
 
 private val FENCE_REGEX = Regex("^```([^\n]*)$")
+private val HORIZONTAL_RULE_LINE_REGEX = Regex("^(-{3,}|\\*{3,}|_{3,})$")
+private val IMAGE_LINE_REGEX = Regex("^!\\[(.*?)\\]\\((.*?)\\)$")
+private val ORDERED_LIST_LINE_REGEX = Regex("^\\d+\\.\\s+.*")
+private val ORDERED_LIST_PREFIX_REGEX = Regex("^\\d+\\.\\s+")
 
 private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
     val lines = markdown.lines()
@@ -58,6 +63,9 @@ private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
         val line = lines[i]
         val trimmed = line.trimEnd()
         val fenceMatch = FENCE_REGEX.find(trimmed)
+        // Computed once up front (rather than matches() + find() inside the branch below) so an
+        // image line is only ever matched against the regex a single time.
+        val imageMatch = IMAGE_LINE_REGEX.matchEntire(trimmed)
 
         when {
             // Fenced code block — consume lines until the closing fence (or end of input)
@@ -75,7 +83,7 @@ private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
                 continue
             }
             // Horizontal rule
-            trimmed.matches(Regex("^(-{3,}|\\*{3,}|_{3,})$")) -> {
+            trimmed.matches(HORIZONTAL_RULE_LINE_REGEX) -> {
                 blocks.add(MarkdownBlock.HorizontalRule)
                 orderedIndex = 1
             }
@@ -93,10 +101,9 @@ private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
                 orderedIndex = 1
             }
             // Markdown image
-            trimmed.matches(Regex("^!\\[(.*?)\\]\\((.*?)\\)$")) -> {
-                val match = Regex("^!\\[(.*?)\\]\\((.*?)\\)$").find(trimmed)
-                val alt = match?.groupValues?.getOrNull(1) ?: ""
-                val path = match?.groupValues?.getOrNull(2) ?: ""
+            imageMatch != null -> {
+                val alt = imageMatch.groupValues.getOrNull(1) ?: ""
+                val path = imageMatch.groupValues.getOrNull(2) ?: ""
                 blocks.add(MarkdownBlock.Image(path, alt))
                 orderedIndex = 1
             }
@@ -112,8 +119,8 @@ private fun parseMarkdown(markdown: String): List<MarkdownBlock> {
                 orderedIndex = 1
             }
             // Ordered list
-            trimmed.matches(Regex("^\\d+\\.\\s+.*")) -> {
-                val text = trimmed.replaceFirst(Regex("^\\d+\\.\\s+"), "")
+            trimmed.matches(ORDERED_LIST_LINE_REGEX) -> {
+                val text = trimmed.replaceFirst(ORDERED_LIST_PREFIX_REGEX, "")
                 blocks.add(MarkdownBlock.OrderedItem(orderedIndex++, text))
             }
             // Blank line
@@ -159,7 +166,10 @@ private fun parseInline(text: String, codeBackground: Color): AnnotatedString = 
                 }
             }
             // Bold + italic: ***text***
-            i + 2 < text.length && text.substring(i, i + 3) == "***" -> {
+            // startsWith(prefix, index) avoids allocating a temporary substring just to compare
+            // it against a literal, unlike substring(...) == "..." — this runs on every character
+            // of every rendered line, so the allocation adds up on longer notes.
+            text.startsWith("***", i) -> {
                 val end = text.indexOf("***", i + 3)
                 if (end != -1) {
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)) {
@@ -171,7 +181,7 @@ private fun parseInline(text: String, codeBackground: Color): AnnotatedString = 
                 }
             }
             // Bold: **text**
-            i + 1 < text.length && text.substring(i, i + 2) == "**" -> {
+            text.startsWith("**", i) -> {
                 val end = text.indexOf("**", i + 2)
                 if (end != -1) {
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
@@ -219,20 +229,26 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     baseStyle: TextStyle = MaterialTheme.typography.bodyLarge
 ) {
-    val blocks = parseMarkdown(markdown)
+    // Parsing markdown into blocks is a multi-pass line-by-line scan — skip redoing it on
+    // recompositions that aren't caused by the text itself changing (e.g. a theme/color change).
+    val blocks = remember(markdown) { parseMarkdown(markdown) }
     val primary = MaterialTheme.colorScheme.primary
     val onSurface = MaterialTheme.colorScheme.onSurface
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val quoteAccent = MaterialTheme.colorScheme.primaryContainer
-    val codeHighlightColors = CodeHighlightColors(
-        keyword = MaterialTheme.colorScheme.primary,
-        string = MaterialTheme.colorScheme.tertiary,
-        number = MaterialTheme.colorScheme.secondary,
-        comment = onSurface.copy(alpha = 0.45f)
-    )
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val codeHighlightColors = remember(primary, onSurface, tertiary, secondary) {
+        CodeHighlightColors(
+            keyword = primary,
+            string = tertiary,
+            number = secondary,
+            comment = onSurface.copy(alpha = 0.45f)
+        )
+    }
 
     Column(modifier = modifier) {
-        for ((blockIndex, block) in blocks.withIndex()) {
+        blocks.forEachIndexed { blockIndex, block ->
             when (block) {
                 is MarkdownBlock.Heading -> {
                     val style = when (block.level) {
@@ -251,7 +267,7 @@ fun MarkdownText(
                     }
                     if (blockIndex > 0) Spacer(Modifier.height(8.dp))
                     Text(
-                        text = parseInline(block.text, codeBackground),
+                        text = remember(block.text, codeBackground) { parseInline(block.text, codeBackground) },
                         style = style
                     )
                     if (block.level == 1) {
@@ -296,9 +312,11 @@ fun MarkdownText(
                             )
                         }
                         Text(
-                            text = buildAnnotatedString {
-                                append(block.code)
-                                applySyntaxHighlighting(block.code, block.language, 0, codeHighlightColors)
+                            text = remember(block.code, block.language, codeHighlightColors) {
+                                buildAnnotatedString {
+                                    append(block.code)
+                                    applySyntaxHighlighting(block.code, block.language, 0, codeHighlightColors)
+                                }
                             },
                             style = baseStyle.copy(
                                 fontFamily = FontFamily.Monospace,
@@ -311,7 +329,7 @@ fun MarkdownText(
 
                 is MarkdownBlock.Paragraph -> {
                     Text(
-                        text = parseInline(block.text, codeBackground),
+                        text = remember(block.text, codeBackground) { parseInline(block.text, codeBackground) },
                         style = baseStyle.copy(color = onSurface)
                     )
                 }
@@ -326,7 +344,7 @@ fun MarkdownText(
                                 .width(16.dp)
                         )
                         Text(
-                            text = parseInline(block.text, codeBackground),
+                            text = remember(block.text, codeBackground) { parseInline(block.text, codeBackground) },
                             style = baseStyle.copy(color = onSurface),
                             modifier = Modifier.weight(1f)
                         )
@@ -343,7 +361,7 @@ fun MarkdownText(
                                 .width(24.dp)
                         )
                         Text(
-                            text = parseInline(block.text, codeBackground),
+                            text = remember(block.text, codeBackground) { parseInline(block.text, codeBackground) },
                             style = baseStyle.copy(color = onSurface),
                             modifier = Modifier.weight(1f)
                         )
@@ -360,7 +378,7 @@ fun MarkdownText(
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = parseInline(block.text, codeBackground),
+                            text = remember(block.text, codeBackground) { parseInline(block.text, codeBackground) },
                             style = baseStyle.copy(
                                 color = onSurface.copy(alpha = 0.75f),
                                 fontStyle = FontStyle.Italic
@@ -390,22 +408,37 @@ fun MarkdownText(
     }
 }
 
+// ─── Markdown → plain-text preview ────────────────────────────────────────────
+
+private val FENCED_OPEN_REGEX = Regex("(?m)^```[^\n]*\n")
+private val FENCED_CLOSE_REGEX = Regex("(?m)^```[ \t]*$")
+private val IMAGE_REGEX = Regex("!\\[.*?\\]\\(.*?\\)")
+private val LINK_REGEX = Regex("\\[(.*?)\\]\\(.*?\\)")
+private val HEADING_REGEX = Regex("^#{1,6}\\s+", RegexOption.MULTILINE)
+private val BOLD_REGEX = Regex("\\*\\*(.*?)\\*\\*")
+private val ITALIC_REGEX = Regex("\\*(.*?)\\*")
+private val INLINE_CODE_REGEX = Regex("`(.*?)`")
+private val QUOTE_REGEX = Regex("^>\\s+", RegexOption.MULTILINE)
+private val UNORDERED_LIST_REGEX = Regex("^[-*]\\s+", RegexOption.MULTILINE)
+private val ORDERED_LIST_REGEX = Regex("^\\d+\\.\\s+", RegexOption.MULTILINE)
+private val HORIZONTAL_RULE_REGEX = Regex("^-{3,}$", RegexOption.MULTILINE)
+
 /**
  * Strips common markdown syntax from a string to produce a plain-text preview snippet.
  */
 fun stripMarkdown(text: String): String {
     return text
-        .replace(Regex("(?m)^```[^\n]*\n"), "") // Strip fenced code block opening fence + language tag
-        .replace(Regex("(?m)^```[ \t]*$"), "") // Strip fenced code block closing fence
-        .replace(Regex("!\\[.*?\\]\\(.*?\\)"), "") // Strip markdown images
-        .replace(Regex("\\[(.*?)\\]\\(.*?\\)"), "$1") // Strip markdown links but keep text
-        .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
-        .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-        .replace(Regex("\\*(.*?)\\*"), "$1")
-        .replace(Regex("`(.*?)`"), "$1")
-        .replace(Regex("^>\\s+", RegexOption.MULTILINE), "")
-        .replace(Regex("^[-*]\\s+", RegexOption.MULTILINE), "")
-        .replace(Regex("^\\d+\\.\\s+", RegexOption.MULTILINE), "")
-        .replace(Regex("^-{3,}$", RegexOption.MULTILINE), "")
+        .replace(FENCED_OPEN_REGEX, "") // Strip fenced code block opening fence + language tag
+        .replace(FENCED_CLOSE_REGEX, "") // Strip fenced code block closing fence
+        .replace(IMAGE_REGEX, "") // Strip markdown images
+        .replace(LINK_REGEX, "$1") // Strip markdown links but keep text
+        .replace(HEADING_REGEX, "")
+        .replace(BOLD_REGEX, "$1")
+        .replace(ITALIC_REGEX, "$1")
+        .replace(INLINE_CODE_REGEX, "$1")
+        .replace(QUOTE_REGEX, "")
+        .replace(UNORDERED_LIST_REGEX, "")
+        .replace(ORDERED_LIST_REGEX, "")
+        .replace(HORIZONTAL_RULE_REGEX, "")
         .trim()
 }

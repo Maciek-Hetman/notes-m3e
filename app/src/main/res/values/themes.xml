@@ -1,6 +1,11 @@
 <resources>
 
-    <style name="Theme.Notes" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <!-- This is a pure Compose app (all UI comes from Material3/MaterialExpressiveTheme in
+         NotesTheme.kt), so the window theme only needs to supply a plain full-screen base —
+         a platform theme is enough and avoids depending on the (unused) com.google.android.material
+         AAR just for this parent. Light/dark switching of windowBackground is handled by the
+         values-night resource qualifier below, and NotesTheme drives everything else at runtime. -->
+    <style name="Theme.Notes" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
     </style>
 </resources>

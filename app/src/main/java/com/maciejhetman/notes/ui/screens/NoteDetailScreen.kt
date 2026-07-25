@@ -108,6 +108,16 @@ import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
 import kotlinx.coroutines.delay
 
+// Hoisted to top-level so they're compiled once rather than on every keystroke — these all run
+// either inside onValueChange or inside the content field's decorationBox, both of which
+// re-execute on every recomposition of the text being edited.
+private val LIST_CONTINUATION_MARKER_REGEX = Regex("^(\\s*)(- \\[[ xX]\\]|[-*]|\\d+\\.)\\s+")
+private val ORDERED_LIST_MARKER_REGEX = Regex("^(\\s*)(\\d+)\\.\\s+")
+private val CHECKED_TODO_MARKER_REGEX = Regex("- \\[[xX]\\]", RegexOption.IGNORE_CASE)
+private val TODO_MARKER_REGEX = Regex("- \\[[ xX]\\] ")
+private val TODO_LINE_REGEX = Regex("(?m)^\\s*- \\[[ xX]\\] ")
+private val IMAGE_MARKDOWN_REGEX = Regex("!\\[.*?\\]\\((.*?)\\)")
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteDetailScreen(
@@ -384,7 +394,7 @@ fun NoteDetailScreen(
                             
                             val textBeforeEnter = newVal.text.substring(0, newVal.selection.start - 1)
                             val lastLine = textBeforeEnter.substringAfterLast('\n')
-                            val listMarker = Regex("^(\\s*)(- \\[[ xX]\\]|[-*]|\\d+\\.)\\s+").find(lastLine)
+                            val listMarker = LIST_CONTINUATION_MARKER_REGEX.find(lastLine)
                             
                             if (listMarker != null) {
                                 val marker = listMarker.value
@@ -395,13 +405,13 @@ fun NoteDetailScreen(
                                 } else {
                                     // Auto-continue the list
                                     var nextMarker = marker
-                                    val numMatch = Regex("^(\\s*)(\\d+)\\.\\s+").find(marker)
+                                    val numMatch = ORDERED_LIST_MARKER_REGEX.find(marker)
                                     if (numMatch != null) {
                                         val space = numMatch.groupValues[1]
                                         val num = numMatch.groupValues[2].toInt()
                                         nextMarker = "$space${num + 1}. "
                                     } else if (marker.contains("- [x]", ignoreCase = true) || marker.contains("- [X]", ignoreCase = true)) {
-                                        nextMarker = marker.replace(Regex("- \\[[xX]\\]", RegexOption.IGNORE_CASE), "- [ ]")
+                                        nextMarker = marker.replace(CHECKED_TODO_MARKER_REGEX, "- [ ]")
                                     }
                                     val newText = newVal.text.substring(0, newVal.selection.start) + nextMarker + newVal.text.substring(newVal.selection.end)
                                     newTextFieldValue = TextFieldValue(newText, TextRange(newVal.selection.start + nextMarker.length))
@@ -439,7 +449,7 @@ fun NoteDetailScreen(
                                             )
                                             
                                             if (expandedRect.contains(down.position)) {
-                                                val matches = Regex("- \\[[ xX]\\] ").findAll(contentFieldValue.text)
+                                                val matches = TODO_MARKER_REGEX.findAll(contentFieldValue.text)
                                                 for (match in matches) {
                                                     if (offset in match.range) {
                                                         down.consume()
@@ -513,7 +523,7 @@ fun NoteDetailScreen(
                                     }
                                 }
 
-                                val matches = Regex("(?m)^\\s*- \\[[ xX]\\] ").findAll(contentFieldValue.text)
+                                val matches = TODO_LINE_REGEX.findAll(contentFieldValue.text)
                                 for (match in matches) {
                                     val isChecked = match.value.contains("x", ignoreCase = true)
                                     // We want the bounding box of the '-' character to align perfectly with lists
@@ -538,8 +548,13 @@ fun NoteDetailScreen(
                                     val iconSizePx = with(density) { iconSize.toPx() }
                                     // Center vertically but shift down slightly (2.dp) to better align with the text baseline
                                     val yOffset = rect.top.toInt() + ((rect.height - iconSizePx) / 2).toInt() + with(density) { 2.dp.toPx() }.toInt()
-                                    // Center horizontally within the reserved run instead of hugging the left edge
-                                    val xOffset = (startX + ((reservedWidthPx - iconSizePx) / 2).coerceAtLeast(0f)).toInt()
+                                    // Center horizontally within the reserved run instead of hugging the left edge, but
+                                    // bias the centering pool by a trailing gap so the checkbox doesn't crowd the item
+                                    // text immediately to its right. The reserved run itself (see the Todo list branch
+                                    // in MarkdownVisualTransformation) is deliberately wider than the icon so there's
+                                    // real slack here to redistribute rather than this being clamped to zero.
+                                    val checkboxEndPaddingPx = with(density) { 6.dp.toPx() }
+                                    val xOffset = (startX + ((reservedWidthPx - iconSizePx - checkboxEndPaddingPx) / 2).coerceAtLeast(0f)).toInt()
                                     
                                     val icon = if (isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank
                                     val color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
@@ -555,7 +570,7 @@ fun NoteDetailScreen(
                                 }
 
                                 // Inline Image Overlays
-                                val imageMatches = Regex("!\\[.*?\\]\\((.*?)\\)").findAll(contentFieldValue.text)
+                                val imageMatches = IMAGE_MARKDOWN_REGEX.findAll(contentFieldValue.text)
                                 for (match in imageMatches) {
                                     val isCursorInside = contentFieldValue.selection.start in match.range.first..(match.range.last + 1)
                                     if (!isCursorInside) {

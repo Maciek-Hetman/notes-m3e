@@ -29,6 +29,20 @@ import androidx.compose.ui.text.TextRange
 // File-level so it can be shared with computeNumberedLines() below.
 private val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
 
+// All patterns below run once per keystroke (VisualTransformation.filter runs on every
+// recomposition of the editing text field), so they're compiled once here rather than
+// re-compiled from a string literal on every call.
+private val LIST_MARKER_REGEX = Regex("(?m)^(\\s*)[-*] (?!(\\[[ xX]\\]))")
+private val ORDERED_LIST_LINE_REGEX = Regex("^\\d+\\.\\s.*")
+private val HORIZONTAL_RULE_LINE_REGEX = Regex("^-{3,}$|^\\*{3,}$|^_{3,}$")
+private val INLINE_CODE_REGEX = Regex("`([^`\n]+)`")
+private val BOLD_ITALIC_REGEX = Regex("\\*{3}([^*\n]+?)\\*{3}")
+private val BOLD_REGEX = Regex("\\*\\*([^*\n]+?)\\*\\*")
+private val ITALIC_STAR_REGEX = Regex("(?<![*])\\*([^*\n]+?)\\*(?![*])")
+private val ITALIC_UNDERSCORE_REGEX = Regex("_([^_\n]+?)_")
+private val UNDERLINE_REGEX = Regex("<u>(.*?)</u>")
+private val IMAGE_REGEX = Regex("!\\[.*?\\]\\((.*?)\\)")
+
 /** A single logical line eligible for a rendered line-number gutter entry. */
 data class NumberedLine(val startOffset: Int, val endOffsetExclusive: Int, val number: Int)
 
@@ -110,8 +124,7 @@ class MarkdownVisualTransformation(
 
         // Replace list hyphens/asterisks with a dot, preserving length — but leave fenced
         // code bodies untouched (e.g. a shell comment starting with "- " shouldn't become a bullet).
-        val listMarkerRegex = Regex("(?m)^(\\s*)[-*] (?!(\\[[ xX]\\]))")
-        val modifiedRaw = listMarkerRegex.replace(raw) { match ->
+        val modifiedRaw = LIST_MARKER_REGEX.replace(raw) { match ->
             if (isInsideFence(match.range)) match.value else "${match.groupValues[1]}• "
         }
 
@@ -229,14 +242,17 @@ class MarkdownVisualTransformation(
                 line.trimStart().let { it.startsWith("- [ ] ") || it.startsWith("- [x] ") || it.startsWith("- [X] ") } -> {
                     val spaceCount = line.length - line.trimStart().length
                     // Make the "- [ ] " text completely transparent so we can overlay a stock Checkbox icon.
-                    // Width is shrunk via textGeometricTransform (not fontSize) so the reserved gap before the
-                    // item text stays small and predictable. fontSize is bumped slightly above body text so
-                    // this line's natural height comfortably fits the overlaid checkbox icon.
+                    // Width is controlled via textGeometricTransform (not fontSize) so the reserved gap
+                    // before the item text stays predictable. scaleX is deliberately a bit wider than the
+                    // checkbox icon itself (see NoteDetailScreen's checkboxEndPaddingPx) so there's always
+                    // visible breathing room between the checkbox and the item text that follows it.
+                    // fontSize is bumped slightly above body text so this line's natural height comfortably
+                    // fits the overlaid checkbox icon.
                     addStyle(
                         SpanStyle(
                             color = Color.Transparent,
                             fontSize = scaledSp(20f),
-                            textGeometricTransform = androidx.compose.ui.text.style.TextGeometricTransform(scaleX = 0.55f)
+                            textGeometricTransform = androidx.compose.ui.text.style.TextGeometricTransform(scaleX = 0.8f)
                         ),
                         offset + spaceCount, (offset + spaceCount + 6).coerceAtMost(lineEnd)
                     )
@@ -247,14 +263,14 @@ class MarkdownVisualTransformation(
                     addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.ExtraBold), offset + spaceCount, (offset + spaceCount + 2).coerceAtMost(lineEnd))
                 }
                 // Ordered list number
-                line.matches(Regex("^\\d+\\.\\s.*")) -> {
+                line.matches(ORDERED_LIST_LINE_REGEX) -> {
                     val spaceIdx = line.indexOf(' ')
                     if (spaceIdx > 0) {
                         addStyle(SpanStyle(color = primaryColor, fontWeight = FontWeight.Bold), offset, (offset + spaceIdx + 1).coerceAtMost(lineEnd))
                     }
                 }
                 // Horizontal rule
-                line.matches(Regex("^-{3,}$|^\\*{3,}$|^_{3,}$")) -> {
+                line.matches(HORIZONTAL_RULE_LINE_REGEX) -> {
                     addStyle(SpanStyle(color = primaryColor.copy(alpha = 0.25f)), offset, lineEnd)
                 }
             }
@@ -288,7 +304,7 @@ class MarkdownVisualTransformation(
         fun IntRange.isInsideCode() = codeRanges.any { it.first <= first && last <= it.last }
 
         // Inline code — first pass (skip anything already inside a fenced block)
-        Regex("`([^`\n]+)`").findAll(text).forEach { match ->
+        INLINE_CODE_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 codeRanges += match.range
                 addStyle(
@@ -306,7 +322,7 @@ class MarkdownVisualTransformation(
         }
 
         // Bold + italic ***text***
-        Regex("\\*{3}([^*\n]+?)\\*{3}").findAll(text).forEach { match ->
+        BOLD_ITALIC_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(
                     SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic),
@@ -318,7 +334,7 @@ class MarkdownVisualTransformation(
         }
 
         // Bold **text**
-        Regex("\\*\\*([^*\n]+?)\\*\\*").findAll(text).forEach { match ->
+        BOLD_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontWeight = FontWeight.Bold), match.range.first, match.range.last + 1)
                 dimDelimiter(match.range.first, 2)
@@ -327,7 +343,7 @@ class MarkdownVisualTransformation(
         }
 
         // Italic *text*  (not preceded or followed by another *)
-        Regex("(?<![*])\\*([^*\n]+?)\\*(?![*])").findAll(text).forEach { match ->
+        ITALIC_STAR_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontStyle = FontStyle.Italic), match.range.first, match.range.last + 1)
                 dimDelimiter(match.range.first, 1)
@@ -336,7 +352,7 @@ class MarkdownVisualTransformation(
         }
 
         // Italic _text_
-        Regex("_([^_\n]+?)_").findAll(text).forEach { match ->
+        ITALIC_UNDERSCORE_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(fontStyle = FontStyle.Italic), match.range.first, match.range.last + 1)
                 dimDelimiter(match.range.first, 1)
@@ -345,7 +361,7 @@ class MarkdownVisualTransformation(
         }
 
         // Underline <u>text</u>
-        Regex("<u>(.*?)</u>").findAll(text).forEach { match ->
+        UNDERLINE_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 addStyle(SpanStyle(textDecoration = TextDecoration.Underline), match.range.first, match.range.last + 1)
                 // Dim the tags
@@ -355,7 +371,7 @@ class MarkdownVisualTransformation(
         }
 
         // Markdown Images ![alt](uri)
-        Regex("!\\[.*?\\]\\((.*?)\\)").findAll(text).forEach { match ->
+        IMAGE_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 val isCursorInside = selection.start in match.range.first..(match.range.last + 1)
                 if (isCursorInside) {
