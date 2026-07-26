@@ -517,8 +517,9 @@ fun NoteItem(
                         )
                     }
                     if (note.content.isNotBlank()) {
-                        val cleanContent = remember(note.content) {
-                            stripMarkdown(note.content).trim()
+                        val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+                        val cleanContent = remember(note.content, codeBackground) {
+                            buildNotePreview(note.content, codeBackground)
                         }
                         if (cleanContent.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))

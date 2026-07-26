@@ -27,6 +27,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -212,6 +213,18 @@ private fun parseInline(text: String, codeBackground: Color): AnnotatedString = 
                         append(text.substring(i + 1, end))
                     }
                     i = end + 1
+                } else {
+                    append(text[i++])
+                }
+            }
+            // Underline: <u>text</u> (inserted by the formatting toolbar)
+            text.startsWith("<u>", i) -> {
+                val end = text.indexOf("</u>", i + 3)
+                if (end != -1) {
+                    withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) {
+                        append(text.substring(i + 3, end))
+                    }
+                    i = end + 4
                 } else {
                     append(text[i++])
                 }
@@ -408,37 +421,70 @@ fun MarkdownText(
     }
 }
 
-// ─── Markdown → plain-text preview ────────────────────────────────────────────
+// ─── Markdown → rendered preview (for note cards) ────────────────────────────
 
-private val FENCED_OPEN_REGEX = Regex("(?m)^```[^\n]*\n")
-private val FENCED_CLOSE_REGEX = Regex("(?m)^```[ \t]*$")
-private val IMAGE_REGEX = Regex("!\\[.*?\\]\\(.*?\\)")
 private val LINK_REGEX = Regex("\\[(.*?)\\]\\(.*?\\)")
-private val HEADING_REGEX = Regex("^#{1,6}\\s+", RegexOption.MULTILINE)
-private val BOLD_REGEX = Regex("\\*\\*(.*?)\\*\\*")
-private val ITALIC_REGEX = Regex("\\*(.*?)\\*")
-private val INLINE_CODE_REGEX = Regex("`(.*?)`")
-private val QUOTE_REGEX = Regex("^>\\s+", RegexOption.MULTILINE)
-private val UNORDERED_LIST_REGEX = Regex("^[-*]\\s+", RegexOption.MULTILINE)
-private val ORDERED_LIST_REGEX = Regex("^\\d+\\.\\s+", RegexOption.MULTILINE)
-private val HORIZONTAL_RULE_REGEX = Regex("^-{3,}$", RegexOption.MULTILINE)
+private val HEADING_PREFIX_REGEX = Regex("^#{1,6}\\s+")
+private val QUOTE_PREFIX_REGEX = Regex("^>\\s+")
+private val CHECKED_TODO_PREFIX_REGEX = Regex("^[-*]\\s+\\[[xX]\\]\\s+")
+private val UNCHECKED_TODO_PREFIX_REGEX = Regex("^[-*]\\s+\\[ \\]\\s+")
+private val UNORDERED_PREFIX_REGEX = Regex("^[-*]\\s+")
+private val HR_LINE_REGEX = Regex("^(-{3,}|\\*{3,}|_{3,})$")
+private val PREVIEW_IMAGE_LINE_REGEX = Regex("^!\\[.*?\\]\\(.*?\\)$")
 
 /**
- * Strips common markdown syntax from a string to produce a plain-text preview snippet.
+ * Strips block-level markdown syntax (headings, list/quote/todo markers, fenced code
+ * delimiters, images, horizontal rules) from [text], leaving plain lines with any inline
+ * syntax (bold/italic/code/underline) still intact so it can be rendered by [parseInline].
  */
-fun stripMarkdown(text: String): String {
-    return text
-        .replace(FENCED_OPEN_REGEX, "") // Strip fenced code block opening fence + language tag
-        .replace(FENCED_CLOSE_REGEX, "") // Strip fenced code block closing fence
-        .replace(IMAGE_REGEX, "") // Strip markdown images
-        .replace(LINK_REGEX, "$1") // Strip markdown links but keep text
-        .replace(HEADING_REGEX, "")
-        .replace(BOLD_REGEX, "$1")
-        .replace(ITALIC_REGEX, "$1")
-        .replace(INLINE_CODE_REGEX, "$1")
-        .replace(QUOTE_REGEX, "")
-        .replace(UNORDERED_LIST_REGEX, "")
-        .replace(ORDERED_LIST_REGEX, "")
-        .replace(HORIZONTAL_RULE_REGEX, "")
-        .trim()
+private fun stripBlockSyntaxForPreview(text: String): String {
+    val lines = text.lines()
+    val result = StringBuilder()
+    var i = 0
+    while (i < lines.size) {
+        val trimmed = lines[i].trim()
+        when {
+            trimmed.startsWith("```") -> {
+                // Skip the block entirely — a code snippet rarely makes for a useful preview
+                // and keeping it would drag raw, unhighlighted code into the card.
+                i++
+                while (i < lines.size && !lines[i].trim().startsWith("```")) i++
+                i++
+            }
+            trimmed.isEmpty() || trimmed.matches(HR_LINE_REGEX) || PREVIEW_IMAGE_LINE_REGEX.matches(trimmed) -> {
+                i++
+            }
+            else -> {
+                val line = when {
+                    CHECKED_TODO_PREFIX_REGEX.containsMatchIn(trimmed) ->
+                        "☑ " + trimmed.replaceFirst(CHECKED_TODO_PREFIX_REGEX, "")
+                    UNCHECKED_TODO_PREFIX_REGEX.containsMatchIn(trimmed) ->
+                        "☐ " + trimmed.replaceFirst(UNCHECKED_TODO_PREFIX_REGEX, "")
+                    UNORDERED_PREFIX_REGEX.containsMatchIn(trimmed) ->
+                        "• " + trimmed.replaceFirst(UNORDERED_PREFIX_REGEX, "")
+                    QUOTE_PREFIX_REGEX.containsMatchIn(trimmed) ->
+                        trimmed.replaceFirst(QUOTE_PREFIX_REGEX, "")
+                    HEADING_PREFIX_REGEX.containsMatchIn(trimmed) ->
+                        trimmed.replaceFirst(HEADING_PREFIX_REGEX, "")
+                    else -> trimmed
+                }.replace(LINK_REGEX, "$1") // Keep link text, drop the URL
+
+                if (result.isNotEmpty()) result.append('\n')
+                result.append(line)
+                i++
+            }
+        }
+    }
+    return result.toString()
+}
+
+/**
+ * Builds a short, rendered preview of [markdown] suitable for a note card: block syntax
+ * (headings, lists, quotes, images, code fences…) is stripped or simplified, while inline
+ * styling (bold, italic, inline code, underline) is preserved as real formatting rather than
+ * showing raw syntax like `**bold**` or `<u>underlined</u>`.
+ */
+fun buildNotePreview(markdown: String, codeBackground: Color): AnnotatedString {
+    val cleaned = stripBlockSyntaxForPreview(markdown)
+    return parseInline(cleaned, codeBackground)
 }
