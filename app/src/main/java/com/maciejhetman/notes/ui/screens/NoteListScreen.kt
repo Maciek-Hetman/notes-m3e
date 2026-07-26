@@ -468,14 +468,17 @@ fun NoteItem(
     }
     var menuExpanded by remember { mutableStateOf(false) }
 
+    val shape = RoundedCornerShape(16.dp)
+
     Box(modifier = modifier) {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = shape,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ),
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(shape)
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = { menuExpanded = true }
