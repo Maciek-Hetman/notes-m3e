@@ -3,8 +3,10 @@ package com.maciejhetman.notes.ui.screens
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -263,7 +265,8 @@ fun NoteListScreen(
                         SwipeableNoteItem(
                             note = note,
                             onClick = { onNoteClick(note.id) },
-                            onDismiss = { noteToDelete = note }
+                            onDismiss = { noteToDelete = note },
+                            onDeleteClick = { noteToDelete = note }
                         )
                     }
                 }
@@ -398,7 +401,8 @@ private fun formatDateRange(filter: DateRangeFilter): String {
 private fun SwipeableNoteItem(
     note: Note,
     onClick: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         positionalThreshold = { totalDistance -> totalDistance * 0.7f }, // less sensitive threshold
@@ -447,91 +451,118 @@ private fun SwipeableNoteItem(
             }
         }
     ) {
-        NoteItem(note = note, onClick = onClick)
+        NoteItem(note = note, onClick = onClick, onDeleteClick = onDeleteClick)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteItem(
     note: Note,
     onClick: () -> Unit,
+    onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val firstImagePath = remember(note.content) {
         NOTE_PREVIEW_IMAGE_REGEX.find(note.content)?.groupValues?.getOrNull(1)
     }
+    var menuExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(
+    Box(modifier = modifier) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { menuExpanded = true }
+                )
         ) {
-            Column(
-                modifier = Modifier.weight(1f)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = note.title.ifEmpty { "Untitled" },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = formatTimestamp(note.modifiedAt),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                if (note.content.isNotBlank()) {
-                    val cleanContent = remember(note.content) {
-                        stripMarkdown(note.content).trim()
-                    }
-                    if (cleanContent.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = cleanContent,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
+                            text = note.title.ifEmpty { "Untitled" },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            lineHeight = 20.sp
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = formatTimestamp(note.modifiedAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    if (note.content.isNotBlank()) {
+                        val cleanContent = remember(note.content) {
+                            stripMarkdown(note.content).trim()
+                        }
+                        if (cleanContent.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = cleanContent,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 20.sp
+                            )
+                        }
+                    }
+                }
+                if (firstImagePath != null) {
+                    Card(
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = coil.compose.rememberAsyncImagePainter(model = firstImagePath),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
                         )
                     }
                 }
             }
-            if (firstImagePath != null) {
-                Card(
-                    modifier = Modifier.size(56.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = coil.compose.rememberAsyncImagePainter(model = firstImagePath),
+        }
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Delete note") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Delete,
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        tint = MaterialTheme.colorScheme.error
                     )
+                },
+                onClick = {
+                    menuExpanded = false
+                    onDeleteClick()
                 }
-            }
+            )
         }
     }
 }
