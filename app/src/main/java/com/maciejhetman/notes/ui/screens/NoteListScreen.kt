@@ -201,7 +201,7 @@ fun NoteListScreen(
                                         viewModel.onSortOptionChange(option)
                                         sortMenuExpanded = false
                                     },
-                                    leadingIcon = if (option == uiState.sortOption) {
+                                    trailingIcon = if (option == uiState.sortOption) {
                                         { Icon(Icons.Default.Check, contentDescription = null) }
                                     } else null
                                 )
