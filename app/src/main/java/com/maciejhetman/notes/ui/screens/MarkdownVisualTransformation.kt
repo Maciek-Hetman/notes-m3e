@@ -95,9 +95,9 @@ class MarkdownVisualTransformation(
     // instead of an arbitrary assumption — otherwise the image ends up squashed/stretched.
     private val containerWidthDp: Float = 320f,
     // Colors used for syntax highlighting inside fenced code blocks.
-    private val keywordColor: Color = primaryColor,
-    private val stringColor: Color = primaryColor,
-    private val numberColor: Color = primaryColor,
+    keywordColor: Color = primaryColor,
+    stringColor: Color = primaryColor,
+    numberColor: Color = primaryColor,
     // Scales every visible font size in this transformation (headings, code, markers) to match
     // the user's font-size preference. The base body text size is scaled separately by the
     // caller via the TextField's own textStyle.

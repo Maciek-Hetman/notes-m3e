@@ -1,7 +1,6 @@
 package com.maciejhetman.notes.ui.theme
 
 import android.app.Activity
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.WindowCompat
 import com.maciejhetman.notes.data.ThemeMode
 
@@ -118,7 +118,7 @@ fun NotesTheme(
             // stays whatever the static Activity theme declares (white), which briefly flashes
             // through during nav transitions/config changes since Compose only paints inside the
             // Surface below, not the window itself.
-            window.setBackgroundDrawable(ColorDrawable(backgroundArgb))
+            window.setBackgroundDrawable(backgroundArgb.toDrawable())
         }
     }
 

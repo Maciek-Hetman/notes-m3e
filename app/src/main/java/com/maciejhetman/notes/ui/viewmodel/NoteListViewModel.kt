@@ -21,10 +21,8 @@ class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _sortOption = MutableStateFlow(SortOption.MODIFIED_NEWEST)
-    val sortOption: StateFlow<SortOption> = _sortOption.asStateFlow()
 
     private val _dateRangeFilter = MutableStateFlow<DateRangeFilter?>(null)
-    val dateRangeFilter: StateFlow<DateRangeFilter?> = _dateRangeFilter.asStateFlow()
 
     val notesUiState: StateFlow<NoteListUiState> = combine(
         _searchQuery.flatMapLatest { query ->

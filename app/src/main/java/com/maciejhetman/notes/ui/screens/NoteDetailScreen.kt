@@ -103,6 +103,7 @@ import com.maciejhetman.notes.ui.theme.LocalAppSettings
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 
 // Hoisted to top-level so they're compiled once rather than on every keystroke — these all run
 // either inside onValueChange or inside the content field's decorationBox, both of which
@@ -164,7 +165,7 @@ fun NoteDetailScreen(
     LaunchedEffect(uiState.savedState) {
         if (uiState.savedState == SavedState.Saved) {
             showSavedIndicator = true
-            delay(2000)
+            delay(2.seconds)
             showSavedIndicator = false
         }
     }
@@ -173,7 +174,7 @@ fun NoteDetailScreen(
         onDispose { viewModel.saveNote() }
     }
 
-    // Colours needed by the visual transformation
+    // Colors needed by the visual transformation
     val primaryColor = MaterialTheme.colorScheme.primary
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
@@ -193,7 +194,7 @@ fun NoteDetailScreen(
     // images matches their actual displayed width/aspect-ratio (otherwise they look squashed).
     val containerWidthDp = with(density) { containerWidthPx.toDp().value }
 
-    // Recreated only when theme colours or user preferences change
+    // Recreated only when theme colors or user preferences change
     val markdownTransformation = remember(
         primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(),
         containerWidthDp, keywordColor, stringColor, numberColor, fontScale, appSettings.lineNumberMode, gutterWidthSp
@@ -552,23 +553,19 @@ fun NoteDetailScreen(
                                         val intrinsicSize = painter.intrinsicSize
                                         
                                         // Cache aspect ratio inside state map to dynamically update transformation
-                                        val ratio = if (intrinsicSize.width > 0 && intrinsicSize.height > 0) {
+                                        if (intrinsicSize.width > 0 && intrinsicSize.height > 0) {
                                             val r = intrinsicSize.width / intrinsicSize.height
                                             if (imageAspectRatios[path] != r) {
                                                 imageAspectRatios[path] = r
                                             }
-                                            r
-                                        } else {
-                                            imageAspectRatios[path]
                                         }
 
-                                        val finalWidth = widthDp
                                         val finalHeight = with(density) { lineHeight.toDp() }
 
                                         Card(
                                             modifier = Modifier
                                                 .offset { IntOffset(0, yOffset) }
-                                                .width(finalWidth)
+                                                .width(widthDp)
                                                 .height(finalHeight)
                                                 .padding(vertical = 4.dp)
                                                 .clickable(

@@ -93,24 +93,6 @@ class NoteDetailViewModel(
             repository.updateNote(note)
         }
     }
-
-    fun deleteNote() {
-        autoSaveJob?.cancel()
-        viewModelScope.launch {
-            val state = _uiState.value
-            if (!state.isNew && state.id != null) {
-                repository.deleteNote(
-                    Note(
-                        id = state.id,
-                        title = state.title,
-                        content = state.content,
-                        createdAt = state.createdAt,
-                        modifiedAt = state.modifiedAt
-                    )
-                )
-            }
-        }
-    }
 }
 
 enum class SavedState { Saved, Unsaved, Idle }

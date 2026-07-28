@@ -253,9 +253,8 @@ fun AnnotatedString.Builder.applySyntaxHighlighting(
         }
 
         if (c == '"' || c == '\'' || c == '`') {
-            val quote = c
             var j = i + 1
-            while (j < n && code[j] != quote) {
+            while (j < n && code[j] != c) {
                 if (code[j] == '\\' && j + 1 < n) j++
                 j++
             }

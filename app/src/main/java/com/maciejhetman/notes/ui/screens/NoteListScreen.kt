@@ -329,7 +329,10 @@ private const val END_OF_DAY_OFFSET_MS = 24 * 60 * 60 * 1000L - 1L
 
 // SimpleDateFormat is expensive to construct and not thread-safe to share across threads, but
 // these two formatters are only ever touched from the main thread here, so caching one instance
-// each avoids re-parsing the pattern string on every note item / date range render.
+// each avoids re-parsing the pattern string on every note item / date range render. The locale is
+// intentionally captured once at startup; this app does not need to react to locale changes while
+// running.
+@Suppress("ConstantLocale")
 private val MONTH_DAY_FORMATTER = SimpleDateFormat("MMM d", Locale.getDefault())
 
 private val NOTE_PREVIEW_IMAGE_REGEX = Regex("!\\[.*?\\]\\((.*?)\\)")
