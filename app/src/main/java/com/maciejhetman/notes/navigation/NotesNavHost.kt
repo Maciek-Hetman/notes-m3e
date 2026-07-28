@@ -3,7 +3,6 @@ package com.maciejhetman.notes.navigation
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -98,13 +97,9 @@ fun NotesNavHost() {
                     fadeOut(tween(NAV_ANIMATION_DURATION_MS))
             )
         },
-        // Predictive back (Android 13+/14+ system gesture): the current screen shrinks and fades
-        // slightly in place — no slide — so the revealed previous screen underneath reads as a
-        // live preview that tracks the swipe, matching the system's own predictive-back affordance.
-        predictivePopTransitionSpec = {
-            fadeIn(tween(NAV_ANIMATION_DURATION_MS)) togetherWith
-                (fadeOut(tween(NAV_ANIMATION_DURATION_MS)) + scaleOut(targetScale = 0.92f))
-        },
+        // predictivePopTransitionSpec is intentionally left at its default: NavDisplay's stock
+        // predictive-back animation, matching the system's own affordance without any per-app
+        // customization.
         entryProvider = entryProvider {
             entry<Destination.NoteList>(
                 metadata = ListDetailSceneStrategy.listPane()
@@ -133,6 +128,7 @@ fun NotesNavHost() {
                             fadeOut(tween(NAV_ANIMATION_DURATION_MS))
                     )
                 }
+                // Predictive back gesture uses NavDisplay's stock default rather than a custom spec.
             ) {
                 val viewModel: SettingsViewModel = viewModel(
                     factory = viewModelFactory { SettingsViewModel(settingsRepository) }
@@ -147,6 +143,7 @@ fun NotesNavHost() {
                 )
             }
             entry<Destination.NoteDetail>(
+                // Predictive back gesture uses NavDisplay's stock default rather than a custom spec.
                 metadata = ListDetailSceneStrategy.detailPane()
             ) { key ->
                 val viewModel: NoteDetailViewModel = viewModel(
