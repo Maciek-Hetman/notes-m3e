@@ -39,11 +39,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.data.NoteFontSize
 import com.maciejhetman.notes.data.ThemeMode
+import com.maciejhetman.notes.ui.util.tap
+import com.maciejhetman.notes.ui.util.toggle
 import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -181,11 +184,15 @@ private fun <T> SettingsMenuRow(
     onSelect: (T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { expanded = true }
+            .clickable {
+                haptics.tap()
+                expanded = true
+            }
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -213,6 +220,7 @@ private fun <T> SettingsMenuRow(
                 DropdownMenuItem(
                     text = { Text(labelFor(option)) },
                     onClick = {
+                        haptics.tap()
                         onSelect(option)
                         expanded = false
                     }
@@ -228,15 +236,21 @@ private fun SettingsSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
+    val onToggle: (Boolean) -> Unit = { newChecked ->
+        haptics.toggle(newChecked)
+        onCheckedChange(newChecked)
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clickable { onToggle(!checked) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onToggle)
     }
 }

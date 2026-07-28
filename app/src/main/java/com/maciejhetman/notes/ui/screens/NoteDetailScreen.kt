@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
@@ -100,6 +101,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.ui.theme.LocalAppSettings
+import com.maciejhetman.notes.ui.util.tap
+import com.maciejhetman.notes.ui.util.toggle
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
 import kotlinx.coroutines.delay
@@ -122,6 +125,7 @@ fun NoteDetailScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val haptics = LocalHapticFeedback.current
     val contentFocusRequester = remember { FocusRequester() }
     val imageAspectRatios = remember { mutableStateMapOf<String, Float>() }
     var containerWidthPx by remember { mutableIntStateOf(0) }
@@ -418,6 +422,7 @@ fun NoteDetailScreen(
                                                         down.consume()
                                                         val isChecked = match.value.contains("x", ignoreCase = true)
                                                         val replacement = if (isChecked) "- [ ] " else "- [x] "
+                                                        haptics.toggle(checked = !isChecked)
                                                         val newText = contentFieldValue.text.replaceRange(match.range, replacement)
                                                         
                                                         val newValLocal = TextFieldValue(newText, contentFieldValue.selection)
@@ -602,6 +607,7 @@ fun NoteDetailScreen(
                                                             interactionSource = remember { MutableInteractionSource() },
                                                             indication = null
                                                         ) {
+                                                            haptics.tap()
                                                             val pattern = "!\\[.*?\\]\\(${Regex.escape(path)}\\)"
                                                             val newText = contentFieldValue.text.replace(Regex(pattern), "")
                                                             contentFieldValue = TextFieldValue(newText, TextRange(newText.length))
@@ -753,8 +759,12 @@ private fun ToolbarIconButton(
     label: String,
     onClick: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     FilledTonalIconButton(
-        onClick = onClick,
+        onClick = {
+            haptics.tap()
+            onClick()
+        },
         modifier = Modifier.size(40.dp),
         shape = RoundedCornerShape(10.dp),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -771,8 +781,12 @@ private fun ToolbarTextButton(
     text: String,
     onClick: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     FilledTonalIconButton(
-        onClick = onClick,
+        onClick = {
+            haptics.tap()
+            onClick()
+        },
         modifier = Modifier.size(40.dp),
         shape = RoundedCornerShape(10.dp),
         colors = IconButtonDefaults.filledTonalIconButtonColors(

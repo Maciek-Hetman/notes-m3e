@@ -71,11 +71,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.Note
+import com.maciejhetman.notes.ui.util.confirm
+import com.maciejhetman.notes.ui.util.gestureThresholdActivate
+import com.maciejhetman.notes.ui.util.longPress
+import com.maciejhetman.notes.ui.util.reject
+import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
 import com.maciejhetman.notes.ui.viewmodel.SortOption
@@ -100,6 +106,7 @@ fun NoteListScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var showDateRangePicker by remember { mutableStateOf(false) }
@@ -169,7 +176,10 @@ fun NoteListScreen(
                     Box {
                         FilterChip(
                             selected = uiState.sortOption != SortOption.MODIFIED_NEWEST,
-                            onClick = { sortMenuExpanded = true },
+                            onClick = {
+                                haptics.tap()
+                                sortMenuExpanded = true
+                            },
                             label = { Text(uiState.sortOption.label) },
                             leadingIcon = {
                                 Icon(
@@ -187,6 +197,7 @@ fun NoteListScreen(
                                 DropdownMenuItem(
                                     text = { Text(option.label) },
                                     onClick = {
+                                        haptics.tap()
                                         viewModel.onSortOptionChange(option)
                                         sortMenuExpanded = false
                                     },
@@ -200,7 +211,10 @@ fun NoteListScreen(
 
                     FilterChip(
                         selected = uiState.dateRangeFilter != null,
-                        onClick = { showDateRangePicker = true },
+                        onClick = {
+                            haptics.tap()
+                            showDateRangePicker = true
+                        },
                         label = {
                             Text(
                                 uiState.dateRangeFilter?.let { formatDateRange(it) } ?: "Date range"
@@ -220,7 +234,10 @@ fun NoteListScreen(
                                     contentDescription = "Clear date filter",
                                     modifier = Modifier
                                         .size(18.dp)
-                                        .clickable { viewModel.onClearDateRangeFilter() }
+                                        .clickable {
+                                            haptics.tap()
+                                            viewModel.onClearDateRangeFilter()
+                                        }
                                 )
                             }
                         } else null
@@ -230,7 +247,10 @@ fun NoteListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = onAddNoteClick,
+                onClick = {
+                    haptics.tap()
+                    onAddNoteClick()
+                },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
@@ -282,6 +302,7 @@ fun NoteListScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        haptics.reject()
                         val note = noteToDelete
                         if (note != null) {
                             viewModel.deleteNote(note)
@@ -292,6 +313,7 @@ fun NoteListScreen(
                                     duration = SnackbarDuration.Short
                                 )
                                 if (result == SnackbarResult.ActionPerformed) {
+                                    haptics.confirm()
                                     viewModel.undoDelete(note)
                                 }
                             }
@@ -318,6 +340,7 @@ fun NoteListScreen(
             initialFilter = uiState.dateRangeFilter,
             onDismiss = { showDateRangePicker = false },
             onConfirm = { filter ->
+                haptics.confirm()
                 viewModel.onDateRangeFilterChange(filter)
                 showDateRangePicker = false
             }
@@ -407,11 +430,13 @@ private fun SwipeableNoteItem(
     onDismiss: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     val dismissState = rememberSwipeToDismissBoxState(
         positionalThreshold = { totalDistance -> totalDistance * 0.7f }, // less sensitive threshold
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart ||
                 value == SwipeToDismissBoxValue.StartToEnd) {
+                haptics.gestureThresholdActivate()
                 onDismiss()
             }
             false // always snap back; deletion is handled by dialog confirmation
@@ -466,6 +491,7 @@ fun NoteItem(
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptics = LocalHapticFeedback.current
     val firstImagePath = remember(note.content) {
         NOTE_PREVIEW_IMAGE_REGEX.find(note.content)?.groupValues?.getOrNull(1)
     }
@@ -484,7 +510,10 @@ fun NoteItem(
                 .clip(shape)
                 .combinedClickable(
                     onClick = onClick,
-                    onLongClick = { menuExpanded = true }
+                    onLongClick = {
+                        haptics.longPress()
+                        menuExpanded = true
+                    }
                 )
         ) {
             Row(
@@ -566,6 +595,7 @@ fun NoteItem(
                     )
                 },
                 onClick = {
+                    haptics.tap()
                     menuExpanded = false
                     onDeleteClick()
                 }
