@@ -191,19 +191,32 @@ fun NoteListScreen(
                         )
                         DropdownMenu(
                             expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false }
+                            onDismissRequest = { sortMenuExpanded = false },
+                            shape = RoundedCornerShape(20.dp)
                         ) {
                             SortOption.entries.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(option.label) },
+                                    text = {
+                                        Text(
+                                            text = option.label,
+                                            fontWeight = if (option == uiState.sortOption) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (option == uiState.sortOption) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    trailingIcon = if (option == uiState.sortOption) {
+                                        {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    } else null,
                                     onClick = {
                                         haptics.tap()
                                         viewModel.onSortOptionChange(option)
                                         sortMenuExpanded = false
-                                    },
-                                    trailingIcon = if (option == uiState.sortOption) {
-                                        { Icon(Icons.Default.Check, contentDescription = null) }
-                                    } else null
+                                    }
                                 )
                             }
                         }
