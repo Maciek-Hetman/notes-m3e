@@ -7,6 +7,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,14 +67,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.Note
@@ -169,6 +174,7 @@ fun NoteListScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -180,7 +186,13 @@ fun NoteListScreen(
                                 haptics.tap()
                                 sortMenuExpanded = true
                             },
-                            label = { Text(uiState.sortOption.label) },
+                            label = {
+                                Text(
+                                    text = uiState.sortOption.label,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
                             leadingIcon = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Sort,
@@ -230,7 +242,9 @@ fun NoteListScreen(
                         },
                         label = {
                             Text(
-                                uiState.dateRangeFilter?.let { formatDateRange(it) } ?: "Date range"
+                                text = uiState.dateRangeFilter?.let { formatDateRange(it) } ?: "Date range",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         },
                         leadingIcon = {
@@ -385,6 +399,8 @@ private fun DateRangeFilterDialog(
         initialSelectedEndDateMillis = initialFilter?.endInclusive?.minus(END_OF_DAY_OFFSET_MS)
     )
 
+    val currentDensity = LocalDensity.current
+
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -410,25 +426,38 @@ private fun DateRangeFilterDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
-        }
+        },
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)
     ) {
-        DateRangePicker(
-            state = dateRangePickerState,
-            modifier = Modifier.weight(1f),
-            title = {
-                Text(
-                    "Filter notes by created date",
-                    modifier = Modifier.padding(start = 24.dp, top = 16.dp)
-                )
-            }
-        )
+        CompositionLocalProvider(
+            LocalDensity provides Density(
+                density = currentDensity.density * 0.82f,
+                fontScale = currentDensity.fontScale * 0.82f
+            )
+        ) {
+            DateRangePicker(
+                state = dateRangePickerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(470.dp),
+                title = {
+                    Text(
+                        text = "Filter notes by created date",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp)
+                    )
+                }
+            )
+        }
     }
 }
 
 private fun formatDateRange(filter: DateRangeFilter): String {
     val start = MONTH_DAY_FORMATTER.format(Date(filter.startInclusive))
     val end = MONTH_DAY_FORMATTER.format(Date(filter.endInclusive))
-    return "$start – $end"
+    return if (start == end) start else "$start – $end"
 }
 
 // confirmValueChange is deprecated without a direct replacement; it is used here purely to trigger
