@@ -91,29 +91,30 @@ class MarkdownVisualTransformation(
     private val selection: TextRange,
     private val imageAspectRatios: Map<String, Float>,
     // Width (in dp, expressed as a plain float) that images are actually rendered at.
-    // Used so the reserved line-height matches the real displayed width/aspect-ratio
-    // instead of an arbitrary assumption — otherwise the image ends up squashed/stretched.
     private val containerWidthDp: Float = 320f,
     // Colors used for syntax highlighting inside fenced code blocks.
     keywordColor: Color = primaryColor,
     stringColor: Color = primaryColor,
     numberColor: Color = primaryColor,
+    customHighlightColors: CodeHighlightColors? = null,
+    // Font family applied to text
+    private val fontFamily: FontFamily = FontFamily.Default,
     // Scales every visible font size in this transformation (headings, code, markers) to match
-    // the user's font-size preference. The base body text size is scaled separately by the
-    // caller via the TextField's own textStyle.
+    // the user's font-size preference.
     private val fontScale: Float = 1f,
     private val lineNumberMode: LineNumberMode = LineNumberMode.OFF,
-    // Indent reserved per numbered line, pre-converted to Sp by the caller (from a Dp gutter
-    // width) so it lines up exactly with the overlay that actually draws the digits.
+    // Indent reserved per numbered line, pre-converted to Sp by the caller
     private val gutterWidth: TextUnit = 0.sp
 ) : VisualTransformation {
 
-    private val codeHighlightColors = CodeHighlightColors(
+    private val codeHighlightColors = customHighlightColors ?: CodeHighlightColors(
         keyword = keywordColor,
         string = stringColor,
         number = numberColor,
         comment = onSurfaceColor.copy(alpha = 0.45f)
     )
+
+    private val effectiveCodeBg = codeHighlightColors.background ?: codeBackground
 
     private fun scaledSp(base: Float) = (base * fontScale).sp
 
@@ -190,7 +191,7 @@ class MarkdownVisualTransformation(
                 addStyle(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
-                        background = codeBackground,
+                        background = effectiveCodeBg,
                         fontSize = scaledSp(13f)
                     ),
                     contentStart, contentEnd
@@ -200,6 +201,7 @@ class MarkdownVisualTransformation(
             }
         }
     }
+
 
     // ── Block-level (per line) ─────────────────────────────────────────────
 

@@ -179,15 +179,25 @@ fun NoteDetailScreen(
 
     // Colors needed by the visual transformation
     val primaryColor = MaterialTheme.colorScheme.primary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-    val codeBackground = MaterialTheme.colorScheme.surfaceVariant
-    val keywordColor = MaterialTheme.colorScheme.primary
-    val stringColor = MaterialTheme.colorScheme.tertiary
-    val numberColor = MaterialTheme.colorScheme.secondary
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
 
-    // User preferences (font size, line numbering) — provided app-wide from Settings.
+    // User preferences (font size, line numbering, syntax theme, font family) — provided app-wide from Settings.
     val appSettings = LocalAppSettings.current
-    val fontScale = appSettings.fontSize.scale
+    val fontScale = appSettings.fontSizeScale
+    val fontFamily = appSettings.fontFamily.toComposeFontFamily()
+
+    val syntaxColors = resolveSyntaxThemeColors(
+        theme = appSettings.syntaxTheme,
+        fallbackPrimary = primaryColor,
+        fallbackSecondary = secondaryColor,
+        fallbackTertiary = tertiaryColor,
+        fallbackOnSurface = onSurfaceColor,
+        fallbackSurfaceVariant = surfaceVariant
+    )
+
     // Width reserved for line-number digits; kept in both Dp (for the overlay Text below) and
     // Sp (for the transformation's paragraph indent) so the two line up pixel-for-pixel.
     val gutterWidthDp = (32f * fontScale).dp
@@ -199,15 +209,24 @@ fun NoteDetailScreen(
 
     // Recreated only when theme colors or user preferences change
     val markdownTransformation = remember(
-        primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios.toMap(),
-        containerWidthDp, keywordColor, stringColor, numberColor, fontScale, appSettings.lineNumberMode, gutterWidthSp
+        primaryColor, onSurfaceColor, surfaceVariant, contentFieldValue.selection, imageAspectRatios.toMap(),
+        containerWidthDp, fontScale, fontFamily, appSettings.lineNumberMode, gutterWidthSp, syntaxColors
     ) {
         MarkdownVisualTransformation(
-            primaryColor, onSurfaceColor, codeBackground, contentFieldValue.selection, imageAspectRatios, containerWidthDp,
-            keywordColor = keywordColor, stringColor = stringColor, numberColor = numberColor,
-            fontScale = fontScale, lineNumberMode = appSettings.lineNumberMode, gutterWidth = gutterWidthSp
+            primaryColor = primaryColor,
+            onSurfaceColor = onSurfaceColor,
+            codeBackground = surfaceVariant,
+            selection = contentFieldValue.selection,
+            imageAspectRatios = imageAspectRatios,
+            containerWidthDp = containerWidthDp,
+            customHighlightColors = syntaxColors,
+            fontFamily = fontFamily,
+            fontScale = fontScale,
+            lineNumberMode = appSettings.lineNumberMode,
+            gutterWidth = gutterWidthSp
         )
     }
+
 
     // ── UI ─────────────────────────────────────────────────────────────────
 
@@ -276,6 +295,7 @@ fun NoteDetailScreen(
                     .fillMaxWidth()
                     .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
                 textStyle = MaterialTheme.typography.headlineLarge.copy(
+                    fontFamily = fontFamily,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onSurface
                 ),
@@ -439,14 +459,9 @@ fun NoteDetailScreen(
                             }
                         },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        fontFamily = fontFamily,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale).sp,
-                        // Explicitly Unspecified (not just "not overridden") — bodyLarge itself carries a
-                        // baked-in lineHeight, and ANY fixed lineHeight forces every line in this field to
-                        // that exact height, clamping lines that contain an oversized run back down. That
-                        // was silently capping our transparent image-placeholder character (and, to a lesser
-                        // extent, headings) to a tiny line height no matter how big we made the placeholder.
-                        // Leaving it Unspecified lets each line size naturally to its tallest run.
                         lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
                     ),
                     visualTransformation = markdownTransformation,
@@ -458,6 +473,7 @@ fun NoteDetailScreen(
                                 Text(
                                     "Start writing…",
                                     style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontFamily = fontFamily,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
                                         fontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale).sp,
                                         lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified

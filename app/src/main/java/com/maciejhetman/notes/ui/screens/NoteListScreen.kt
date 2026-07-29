@@ -90,6 +90,7 @@ import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
 import com.maciejhetman.notes.ui.viewmodel.SortOption
+import com.maciejhetman.notes.ui.theme.LocalAppSettings
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -541,6 +542,9 @@ fun NoteItem(
 
     val shape = RoundedCornerShape(16.dp)
 
+    val appSettings = LocalAppSettings.current
+    val fontFamily = appSettings.fontFamily.toComposeFontFamily()
+
     Box(modifier = modifier) {
         Card(
             shape = shape,
@@ -576,6 +580,7 @@ fun NoteItem(
                         Text(
                             text = note.title.ifEmpty { "Untitled" },
                             style = MaterialTheme.typography.titleMedium,
+                            fontFamily = fontFamily,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
@@ -600,6 +605,7 @@ fun NoteItem(
                             Text(
                                 text = cleanContent,
                                 style = MaterialTheme.typography.bodyMedium,
+                                fontFamily = fontFamily,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,

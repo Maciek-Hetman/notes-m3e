@@ -3,9 +3,11 @@ package com.maciejhetman.notes.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maciejhetman.notes.data.AppSettings
+import com.maciejhetman.notes.data.EditorLineSpacing
 import com.maciejhetman.notes.data.LineNumberMode
-import com.maciejhetman.notes.data.NoteFontSize
+import com.maciejhetman.notes.data.NoteFontFamily
 import com.maciejhetman.notes.data.SettingsRepository
+import com.maciejhetman.notes.data.SyntaxTheme
 import com.maciejhetman.notes.data.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +40,20 @@ class SettingsViewModel(
         viewModelScope.launch { repository.setLineNumberMode(mode) }
     }
 
-    fun setFontSize(size: NoteFontSize) {
-        viewModelScope.launch { repository.setFontSize(size) }
+    fun setFontSizeScale(scale: Float) {
+        viewModelScope.launch { repository.setFontSizeScale(scale) }
+    }
+
+    fun setFontFamily(family: NoteFontFamily) {
+        viewModelScope.launch { repository.setFontFamily(family) }
+    }
+
+    fun setSyntaxTheme(theme: SyntaxTheme) {
+        viewModelScope.launch { repository.setSyntaxTheme(theme) }
+    }
+
+    fun setLineSpacing(spacing: EditorLineSpacing) {
+        viewModelScope.launch { repository.setLineSpacing(spacing) }
     }
 }
+
