@@ -27,7 +27,7 @@ import androidx.compose.ui.text.TextRange
 // Fenced code block: ```language\n ...body... \n```
 // The language tag is optional; body is captured as a single (possibly multi-line) group.
 // File-level so it can be shared with computeNumberedLines() below.
-internal val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
+internal val FENCED_CODE_REGEX = Regex("(?m)^```([a-zA-Z0-9_+-]*)\\r?\\n((?:(?!^```)[\\s\\S])*?\\r?\\n)?```[ \\t]*(?:\\r?\\n|$)")
 
 // All patterns below run once per keystroke (VisualTransformation.filter runs on every
 // recomposition of the editing text field), so they're compiled once here rather than
@@ -73,7 +73,9 @@ fun computeNumberedLines(text: String, mode: LineNumberMode): List<NumberedLine>
                 val content = match.groupValues[2]
                 val contentStart = match.range.first + 3 + language.length + 1
                 var lineOffset = contentStart
-                content.split('\n').forEachIndexed { index, line ->
+                val lines = content.split('\n')
+                val effectiveLines = if (lines.size > 1 && lines.last().isEmpty()) lines.dropLast(1) else lines
+                effectiveLines.forEachIndexed { index, line ->
                     val lineEnd = (lineOffset + line.length).coerceAtMost(text.length)
                     result += NumberedLine(lineOffset, lineEnd, index + 1)
                     lineOffset += line.length + 1
@@ -177,7 +179,6 @@ class MarkdownVisualTransformation(
 
     private fun AnnotatedString.Builder.applyFencedCodeBlocks(fencedMatches: List<MatchResult>) {
         val hiddenFenceStyle = SpanStyle(color = Color.Transparent, fontSize = 0.sp)
-        val innerPaddingSp = scaledSp(10f)
 
         for (match in fencedMatches) {
             val language = match.groupValues[1]
@@ -186,24 +187,29 @@ class MarkdownVisualTransformation(
             val openFenceStart = match.range.first
             val langStart = openFenceStart + 3
             val langEnd = langStart + language.length
-            val contentStart = langEnd + 1 // skip the newline after the language tag
-            val contentEnd = contentStart + content.length
-            val closeFenceStart = contentEnd + 1 // skip the newline before the closing fence
-            val closeFenceEnd = closeFenceStart + 3
+            val contentStart = langEnd + 1 // skip newline after opening language tag
 
-            // Hide the opening ``` fence and the language tag text on line 1 so there's no duplicate text indicator
-            addStyle(hiddenFenceStyle, openFenceStart, (langEnd + 1).coerceAtMost(length))
-            // Hide the newline before ``` AND the ``` backticks themselves so the closing line collapses
-            addStyle(hiddenFenceStyle, contentEnd, closeFenceEnd.coerceAtMost(length))
+            val codeContentEnd = (contentStart + content.length).coerceAtMost(length)
 
-            if (contentEnd > contentStart) {
+            // Hide opening ```lang\n line
+            addStyle(hiddenFenceStyle, openFenceStart, contentStart.coerceAtMost(length))
+
+            // Hide ONLY the closing ``` backticks line
+            val matchText = match.value
+            val closingIndexInMatch = matchText.lastIndexOf("```")
+            if (closingIndexInMatch != -1) {
+                val absoluteCloseStart = match.range.first + closingIndexInMatch
+                addStyle(hiddenFenceStyle, absoluteCloseStart, (absoluteCloseStart + 3).coerceAtMost(length))
+            }
+
+            if (codeContentEnd > contentStart) {
                 addStyle(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
                         color = codeHighlightColors.textColor ?: Color.Unspecified,
                         fontSize = scaledSp(13f)
                     ),
-                    contentStart, contentEnd
+                    contentStart, codeContentEnd
                 )
                 applySyntaxHighlighting(content, language, contentStart, codeHighlightColors)
             }
