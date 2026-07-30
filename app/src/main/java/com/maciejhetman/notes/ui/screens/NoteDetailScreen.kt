@@ -41,16 +41,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Title
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -130,6 +135,7 @@ fun NoteDetailScreen(
     var containerWidthPx by remember { mutableIntStateOf(0) }
     // TextFieldValue preserves cursor position for toolbar insertions
     var contentFieldValue by remember { mutableStateOf(TextFieldValue(uiState.content)) }
+    var activeLanguageMenuBlockIndex by remember { mutableStateOf<Int?>(null) }
 
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -449,6 +455,20 @@ fun NoteDetailScreen(
                                             )
                                             
                                             if (expandedRect.contains(down.position)) {
+                                                val codeMatches = FENCED_CODE_REGEX.findAll(contentFieldValue.text).toList()
+                                                for ((blockIndex, match) in codeMatches.withIndex()) {
+                                                    val language = match.groupValues[1]
+                                                    val openFenceStart = match.range.first
+                                                    val langStart = openFenceStart + 3
+                                                    val langEnd = langStart + language.length
+                                                    if (offset in openFenceStart..(langEnd + 1)) {
+                                                        down.consume()
+                                                        haptics.tap()
+                                                        activeLanguageMenuBlockIndex = if (activeLanguageMenuBlockIndex == blockIndex) null else blockIndex
+                                                        break
+                                                    }
+                                                }
+
                                                 val matches = TODO_MARKER_REGEX.findAll(contentFieldValue.text)
                                                 for (match in matches) {
                                                     if (offset in match.range) {
@@ -614,6 +634,125 @@ fun NoteDetailScreen(
                                     )
                                 }
 
+                                // Language selector menus for code blocks
+                                val codeBlockMatches = FENCED_CODE_REGEX.findAll(contentFieldValue.text).toList()
+                                val enabledLangs = appSettings.enabledLanguages
+                                for ((blockIndex, match) in codeBlockMatches.withIndex()) {
+                                    val language = match.groupValues[1]
+                                    val trimmedLang = language.trim()
+                                    val startOffset = match.range.first.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
+                                    if (startOffset >= layoutResult.layoutInput.text.length) continue
+
+                                    val firstLine = layoutResult.getLineForOffset(startOffset)
+                                    val topPx = layoutResult.getLineTop(firstLine)
+                                    val topPaddingPx = with(density) { 4.dp.toPx() }
+                                    val startY = (topPx - topPaddingPx).coerceAtLeast(0f)
+
+                                    val displayLangName = SUPPORTED_LANGUAGES.firstOrNull {
+                                        it.tag.equals(trimmedLang, ignoreCase = true) || (it.tag.isEmpty() && trimmedLang.isBlank())
+                                    }?.name ?: if (trimmedLang.isNotBlank()) trimmedLang.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } else "Plain text"
+
+                                    val availableLangs = remember(enabledLangs, trimmedLang) {
+                                        val list = SUPPORTED_LANGUAGES.filter { lang ->
+                                            enabledLangs.isEmpty() || enabledLangs.contains(lang.tag) || lang.tag.equals(trimmedLang, ignoreCase = true)
+                                        }
+                                        if (list.isEmpty()) SUPPORTED_LANGUAGES else list
+                                    }
+
+                                    val leftIndentDp = 8.dp
+
+                                    Box(
+                                        modifier = Modifier
+                                            .offset { IntOffset(0, startY.toInt()) }
+                                            .fillMaxWidth()
+                                            .padding(start = leftIndentDp, top = 6.dp),
+                                        contentAlignment = Alignment.TopStart
+                                    ) {
+                                        Box {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
+                                                shape = RoundedCornerShape(16.dp),
+                                                tonalElevation = 3.dp,
+                                                shadowElevation = 1.dp,
+                                                modifier = Modifier.clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null
+                                                ) {
+                                                    haptics.tap()
+                                                    activeLanguageMenuBlockIndex = if (activeLanguageMenuBlockIndex == blockIndex) null else blockIndex
+                                                }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = displayLangName,
+                                                        style = MaterialTheme.typography.labelMedium.copy(
+                                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            fontSize = (12.5f * fontScale).sp
+                                                        )
+                                                    )
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Icon(
+                                                        imageVector = Icons.Default.ArrowDropDown,
+                                                        contentDescription = "Select language",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = activeLanguageMenuBlockIndex == blockIndex,
+                                                onDismissRequest = { activeLanguageMenuBlockIndex = null },
+                                                shape = RoundedCornerShape(16.dp),
+                                                modifier = Modifier.heightIn(max = 300.dp)
+                                            ) {
+                                                availableLangs.forEach { lang ->
+                                                    val isSelected = (lang.tag.equals(trimmedLang, ignoreCase = true)) || (lang.tag.isEmpty() && trimmedLang.isBlank())
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Text(
+                                                                lang.name,
+                                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                            )
+                                                        },
+                                                        trailingIcon = if (isSelected) {
+                                                            {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Check,
+                                                                    contentDescription = null,
+                                                                    tint = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                        } else null,
+                                                        onClick = {
+                                                            haptics.tap()
+                                                            activeLanguageMenuBlockIndex = null
+
+                                                            val openFenceStart = match.range.first
+                                                            val langStart = openFenceStart + 3
+                                                            val langEnd = langStart + language.length
+
+                                                            val newText = contentFieldValue.text.replaceRange(langStart, langEnd, lang.tag)
+                                                            val newVal = TextFieldValue(newText, contentFieldValue.selection)
+                                                            contentFieldValue = newVal
+                                                            viewModel.updateContent(newText)
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 // Inline Image Overlays
                                 val imageMatches = IMAGE_MARKDOWN_REGEX.findAll(contentFieldValue.text)
                                 for (match in imageMatches) {
@@ -748,6 +887,14 @@ private fun buildInsertedValue(syntax: String, current: TextFieldValue): Inserti
         "italic"    -> if (selectedText.isNotEmpty()) "*$selectedText*" to 0 else "**" to 1
         "underline" -> if (selectedText.isNotEmpty()) "<u>$selectedText</u>" to 0 else "<u></u>" to 3
         "code"      -> if (selectedText.isNotEmpty()) "`$selectedText`" to 0 else "``" to 1
+        "codeblock" -> {
+            val prefix = if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "" else "\n"
+            if (selectedText.isNotEmpty()) {
+                "${prefix}```\n$selectedText\n```\n" to (prefix.length + 4 + selectedText.length)
+            } else {
+                "${prefix}```\n\n```\n" to (prefix.length + 4)
+            }
+        }
         "ul"        -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "- " to 2 else "\n- " to 3
         "ol"        -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "1. " to 3 else "\n1. " to 4
         "todo"      -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "- [ ] " to 6 else "\n- [ ] " to 7
@@ -804,6 +951,7 @@ private fun MarkdownToolbar(
                         ToolbarIconButton(Icons.Default.FormatBold, "Bold") { onInsert("bold") }
                         ToolbarIconButton(Icons.Default.FormatItalic, "Italic") { onInsert("italic") }
                         ToolbarIconButton(Icons.Default.FormatUnderlined, "Underline") { onInsert("underline") }
+                        ToolbarIconButton(Icons.Default.Code, "Code Block") { onInsert("codeblock") }
                         ToolbarDivider()
                         ToolbarIconButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Lists") { state = ToolbarState.Lists }
                         ToolbarDivider()

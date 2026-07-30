@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -53,7 +54,8 @@ data class AppSettings(
     val fontSizeScale: Float = 1.0f,
     val fontFamily: NoteFontFamily = NoteFontFamily.SYSTEM,
     val syntaxTheme: SyntaxTheme = SyntaxTheme.MATERIAL,
-    val lineSpacing: EditorLineSpacing = EditorLineSpacing.NORMAL
+    val lineSpacing: EditorLineSpacing = EditorLineSpacing.NORMAL,
+    val enabledLanguages: Set<String> = emptySet()
 )
 
 private val Context.settingsDataStore by preferencesDataStore(name = "app_settings")
@@ -69,6 +71,7 @@ class SettingsRepository(private val context: Context) {
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val SYNTAX_THEME = stringPreferencesKey("syntax_theme")
         val LINE_SPACING = stringPreferencesKey("line_spacing")
+        val ENABLED_LANGUAGES = stringSetPreferencesKey("enabled_languages")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -80,7 +83,8 @@ class SettingsRepository(private val context: Context) {
             fontSizeScale = prefs[Keys.FONT_SIZE_SCALE] ?: 1.0f,
             fontFamily = prefs[Keys.FONT_FAMILY]?.toEnumOrNull<NoteFontFamily>() ?: NoteFontFamily.SYSTEM,
             syntaxTheme = prefs[Keys.SYNTAX_THEME]?.toEnumOrNull<SyntaxTheme>() ?: SyntaxTheme.MATERIAL,
-            lineSpacing = prefs[Keys.LINE_SPACING]?.toEnumOrNull<EditorLineSpacing>() ?: EditorLineSpacing.NORMAL
+            lineSpacing = prefs[Keys.LINE_SPACING]?.toEnumOrNull<EditorLineSpacing>() ?: EditorLineSpacing.NORMAL,
+            enabledLanguages = prefs[Keys.ENABLED_LANGUAGES] ?: emptySet()
         )
     }
 
@@ -114,6 +118,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLineSpacing(spacing: EditorLineSpacing) {
         context.settingsDataStore.edit { it[Keys.LINE_SPACING] = spacing.name }
+    }
+
+    suspend fun setEnabledLanguages(languages: Set<String>) {
+        context.settingsDataStore.edit { it[Keys.ENABLED_LANGUAGES] = languages }
     }
 }
 

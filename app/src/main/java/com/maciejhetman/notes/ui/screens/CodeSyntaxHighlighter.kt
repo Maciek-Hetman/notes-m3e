@@ -21,6 +21,30 @@ data class CodeHighlightColors(
     val textColor: Color? = null
 )
 
+data class SupportedLanguage(val name: String, val tag: String)
+
+val SUPPORTED_LANGUAGES = listOf(
+    SupportedLanguage("Plain text", ""),
+    SupportedLanguage("Kotlin", "kotlin"),
+    SupportedLanguage("Python", "python"),
+    SupportedLanguage("JavaScript", "javascript"),
+    SupportedLanguage("TypeScript", "typescript"),
+    SupportedLanguage("Java", "java"),
+    SupportedLanguage("C++", "cpp"),
+    SupportedLanguage("C#", "csharp"),
+    SupportedLanguage("C", "c"),
+    SupportedLanguage("Go", "go"),
+    SupportedLanguage("Rust", "rust"),
+    SupportedLanguage("Bash / Shell", "bash"),
+    SupportedLanguage("SQL", "sql"),
+    SupportedLanguage("HTML", "html"),
+    SupportedLanguage("JSON", "json"),
+    SupportedLanguage("YAML", "yaml"),
+    SupportedLanguage("PHP", "php"),
+    SupportedLanguage("Ruby", "ruby"),
+    SupportedLanguage("Swift", "swift")
+)
+
 fun resolveSyntaxThemeColors(
     theme: com.maciejhetman.notes.data.SyntaxTheme,
     isDark: Boolean = false,

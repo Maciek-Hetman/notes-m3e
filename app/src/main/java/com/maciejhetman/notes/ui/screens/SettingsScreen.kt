@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +37,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -74,6 +78,7 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsState()
     val haptics = LocalHapticFeedback.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    var showLanguageDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -188,8 +193,99 @@ fun SettingsScreen(
                     labelFor = ::lineNumberModeLabel,
                     onSelect = viewModel::setLineNumberMode
                 )
+
+                SettingsDivider()
+
+                val countLabel = if (settings.enabledLanguages.isEmpty()) "All languages (${SUPPORTED_LANGUAGES.size})" else "${settings.enabledLanguages.size} of ${SUPPORTED_LANGUAGES.size} enabled"
+                SettingsClickableRow(
+                    title = "Visible programming languages",
+                    subtitle = countLabel,
+                    onClick = { showLanguageDialog = true }
+                )
             }
         }
+    }
+
+    if (showLanguageDialog) {
+        val currentSelected = remember(settings.enabledLanguages) {
+            if (settings.enabledLanguages.isEmpty()) SUPPORTED_LANGUAGES.map { it.tag }.toSet()
+            else settings.enabledLanguages
+        }
+        var tempSelected by remember { mutableStateOf(currentSelected) }
+
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text("Visible Languages", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Select All",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable { tempSelected = SUPPORTED_LANGUAGES.map { it.tag }.toSet() }
+                                .padding(4.dp)
+                        )
+                        Text(
+                            "Deselect All",
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable { tempSelected = setOf("") }
+                                .padding(4.dp)
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    SUPPORTED_LANGUAGES.forEach { lang ->
+                        val isChecked = tempSelected.contains(lang.tag)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    tempSelected = if (isChecked) {
+                                        if (tempSelected.size > 1) tempSelected - lang.tag else tempSelected
+                                    } else {
+                                        tempSelected + lang.tag
+                                    }
+                                }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = null
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = lang.name,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (isChecked) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setEnabledLanguages(tempSelected)
+                    showLanguageDialog = false
+                }) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLanguageDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
@@ -533,6 +629,39 @@ private fun SettingsSwitchRow(
         Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = onToggle)
+    }
+}
+
+@Composable
+private fun SettingsClickableRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    val haptics = LocalHapticFeedback.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 56.dp)
+            .clickable {
+                haptics.tap()
+                onClick()
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 

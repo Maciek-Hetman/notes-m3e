@@ -191,26 +191,10 @@ class MarkdownVisualTransformation(
             val closeFenceStart = contentEnd + 1 // skip the newline before the closing fence
             val closeFenceEnd = closeFenceStart + 3
 
-            addStyle(hiddenFenceStyle, openFenceStart, langStart)
+            // Hide the opening ``` fence and the language tag text on line 1 so there's no duplicate text indicator
+            addStyle(hiddenFenceStyle, openFenceStart, (langEnd + 1).coerceAtMost(length))
             // Hide the newline before ``` AND the ``` backticks themselves so the closing line collapses
             addStyle(hiddenFenceStyle, contentEnd, closeFenceEnd.coerceAtMost(length))
-
-            if (language.isNotEmpty()) {
-                addStyle(
-                    ParagraphStyle(textIndent = TextIndent(innerPaddingSp, innerPaddingSp)),
-                    openFenceStart, (langEnd + 1).coerceAtMost(length)
-                )
-                addStyle(
-                    SpanStyle(
-                        color = onSurfaceColor.copy(alpha = 0.45f),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = scaledSp(12f),
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.5.sp
-                    ),
-                    langStart, langEnd
-                )
-            }
 
             if (contentEnd > contentStart) {
                 addStyle(

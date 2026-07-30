@@ -55,5 +55,9 @@ class SettingsViewModel(
     fun setLineSpacing(spacing: EditorLineSpacing) {
         viewModelScope.launch { repository.setLineSpacing(spacing) }
     }
+
+    fun setEnabledLanguages(languages: Set<String>) {
+        viewModelScope.launch { repository.setEnabledLanguages(languages) }
+    }
 }
 
