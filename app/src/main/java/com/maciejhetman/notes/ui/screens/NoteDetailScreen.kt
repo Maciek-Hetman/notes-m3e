@@ -514,7 +514,7 @@ fun NoteDetailScreen(
 
                                         val contentStart = match.range.first + 3 + language.length + 1
                                         val contentEnd = contentStart + content.length
-                                        val lastContentOffset = (contentEnd - 1).coerceIn(startOffset, contentFieldValue.text.length - 1)
+                                        val lastContentOffset = (contentEnd - 1).coerceIn(startOffset, (contentFieldValue.text.length - 1).coerceAtLeast(0))
 
                                         val firstLine = layoutResult.getLineForOffset(startOffset)
                                         val lastLine = layoutResult.getLineForOffset(lastContentOffset)
@@ -916,7 +916,7 @@ private fun buildInsertedValue(syntax: String, current: TextFieldValue): Inserti
 
 // ── Toolbar UI ─────────────────────────────────────────────────────────────────
 
-private enum class ToolbarState { Main, Headings, Lists }
+private enum class ToolbarState { Main, Headings, Formatting, Lists }
 
 @Composable
 private fun MarkdownToolbar(
@@ -948,9 +948,8 @@ private fun MarkdownToolbar(
                     ToolbarState.Main -> {
                         ToolbarIconButton(Icons.Default.Title, "Headings") { state = ToolbarState.Headings }
                         ToolbarDivider()
-                        ToolbarIconButton(Icons.Default.FormatBold, "Bold") { onInsert("bold") }
-                        ToolbarIconButton(Icons.Default.FormatItalic, "Italic") { onInsert("italic") }
-                        ToolbarIconButton(Icons.Default.FormatUnderlined, "Underline") { onInsert("underline") }
+                        ToolbarIconButton(Icons.Default.FormatBold, "Formatting") { state = ToolbarState.Formatting }
+                        ToolbarDivider()
                         ToolbarIconButton(Icons.Default.Code, "Code Block") { onInsert("codeblock") }
                         ToolbarDivider()
                         ToolbarIconButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Lists") { state = ToolbarState.Lists }
@@ -964,6 +963,13 @@ private fun MarkdownToolbar(
                         ToolbarTextButton("H2") { onInsert("h2"); state = ToolbarState.Main }
                         ToolbarTextButton("H3") { onInsert("h3"); state = ToolbarState.Main }
                         ToolbarTextButton("H4") { onInsert("h4"); state = ToolbarState.Main }
+                    }
+                    ToolbarState.Formatting -> {
+                        ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
+                        ToolbarDivider()
+                        ToolbarIconButton(Icons.Default.FormatBold, "Bold") { onInsert("bold"); state = ToolbarState.Main }
+                        ToolbarIconButton(Icons.Default.FormatItalic, "Italic") { onInsert("italic"); state = ToolbarState.Main }
+                        ToolbarIconButton(Icons.Default.FormatUnderlined, "Underline") { onInsert("underline"); state = ToolbarState.Main }
                     }
                     ToolbarState.Lists -> {
                         ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
