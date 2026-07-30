@@ -20,7 +20,7 @@ class NoteDetailViewModel(
     private val noteId: Long?
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(NoteDetailUiState())
+    private val _uiState = MutableStateFlow(NoteDetailUiState(id = noteId, isNew = noteId == null))
     val uiState: StateFlow<NoteDetailUiState> = _uiState.asStateFlow()
 
     private var autoSaveJob: Job? = null

@@ -9,9 +9,6 @@ import androidx.compose.ui.text.font.FontWeight
 /**
  * Colors used to paint syntax-highlighted tokens inside fenced code blocks.
  */
-/**
- * Colors used to paint syntax-highlighted tokens inside fenced code blocks.
- */
 data class CodeHighlightColors(
     val keyword: Color,
     val string: Color,

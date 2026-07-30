@@ -16,13 +16,13 @@ import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.LineNumberMode
+import androidx.compose.ui.text.TextRange
 
 /**
  * Obsidian-style Live Preview: applies Markdown visual styles inline without
  * modifying the underlying text. OffsetMapping is Identity since no characters
  * are added or removed — only SpanStyles are layered on top.
  */
-import androidx.compose.ui.text.TextRange
 
 // Fenced code block: ```language\n ...body... \n```
 // The language tag is optional; body is captured as a single (possibly multi-line) group.

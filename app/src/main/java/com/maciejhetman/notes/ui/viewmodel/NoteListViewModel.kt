@@ -94,7 +94,6 @@ data class DateRangeFilter(
 
 data class NoteListUiState(
     val notes: List<Note> = emptyList(),
-    val isLoading: Boolean = false,
     val sortOption: SortOption = SortOption.MODIFIED_NEWEST,
     val dateRangeFilter: DateRangeFilter? = null
 )

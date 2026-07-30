@@ -150,6 +150,7 @@ private fun stripBlockSyntaxForPreview(text: String): String {
                         trimmed.replaceFirst(HEADING_PREFIX_REGEX, "")
                     else -> trimmed
                 }.replace(LINK_REGEX, "$1") // Keep link text, drop the URL
+                  .replace(Regex("!\\[.*?\\]\\(.*?\\)"), "") // Strip inline images too
 
                 if (result.isNotEmpty()) result.append('\n')
                 result.append(line)

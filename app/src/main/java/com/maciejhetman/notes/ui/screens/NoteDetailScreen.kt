@@ -1,13 +1,10 @@
 package com.maciejhetman.notes.ui.screens
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,48 +37,36 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.FormatBold
-import androidx.compose.material.icons.filled.FormatItalic
-import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.filled.FormatUnderlined
-import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -109,6 +94,10 @@ import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.util.toggle
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.maciejhetman.notes.ui.components.*
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.seconds
 
@@ -163,7 +152,7 @@ fun NoteDetailScreen(
     val modifiedStr = remember(uiState.modifiedAt) { timeFormatter.format(java.util.Date(uiState.modifiedAt)) }
 
     // Sync with Room on first load (existing note)
-    LaunchedEffect(uiState.id) {
+    LaunchedEffect(uiState.content) {
         if (contentFieldValue.text != uiState.content) {
             contentFieldValue = TextFieldValue(uiState.content, TextRange(uiState.content.length))
         }
@@ -179,8 +168,21 @@ fun NoteDetailScreen(
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.saveNote() }
+    // Save on dispose (navigation away) AND on ON_STOP (app backgrounded / process death).
+    // DisposableEffect alone is unreliable when the OS kills the process while backgrounded;
+    // the LifecycleEventObserver fires on ON_STOP before that can happen.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.saveNote()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.saveNote()
+        }
     }
 
     // Colors needed by the visual transformation
@@ -220,10 +222,20 @@ fun NoteDetailScreen(
     // images matches their actual displayed width/aspect-ratio (otherwise they look squashed).
     val containerWidthDp = with(density) { containerWidthPx.toDp().value }
 
-    // Recreated only when theme colors or user preferences change
+    // Derive a stable boolean: is the cursor currently inside a markdown image span?
+    // Using this instead of the full TextRange avoids recreating the transformation on every
+    // cursor movement — it only changes when the cursor enters or leaves an image.
+    val cursorInsideImage = remember(contentFieldValue.text, contentFieldValue.selection) {
+        IMAGE_MARKDOWN_REGEX.findAll(contentFieldValue.text).any { match ->
+            contentFieldValue.selection.start in match.range.first..(match.range.last + 1)
+        }
+    }
+
+    // Recreated only when theme colors, user preferences, or image-related state actually change
     val markdownTransformation = remember(
-        primaryColor, onSurfaceColor, surfaceVariant, contentFieldValue.selection, imageAspectRatios.toMap(),
-        containerWidthDp, fontScale, fontFamily, appSettings.lineNumberMode, gutterWidthSp, syntaxColors
+        primaryColor, onSurfaceColor, surfaceVariant, cursorInsideImage, contentFieldValue.selection,
+        imageAspectRatios.toMap(), containerWidthDp, fontScale, fontFamily,
+        appSettings.lineNumberMode, gutterWidthSp, syntaxColors
     ) {
         MarkdownVisualTransformation(
             primaryColor = primaryColor,
@@ -238,6 +250,18 @@ fun NoteDetailScreen(
             lineNumberMode = appSettings.lineNumberMode,
             gutterWidth = gutterWidthSp
         )
+    }
+
+    // ── Cached regex matches ──────────────────────────────────────────────
+    // These would otherwise re-evaluate on every composition frame inside decorationBox.
+    val cachedFencedMatches = remember(contentFieldValue.text) {
+        FENCED_CODE_REGEX.findAll(contentFieldValue.text).toList()
+    }
+    val cachedTodoMatches = remember(contentFieldValue.text) {
+        TODO_LINE_REGEX.findAll(contentFieldValue.text).toList()
+    }
+    val cachedImageMatches = remember(contentFieldValue.text) {
+        IMAGE_MARKDOWN_REGEX.findAll(contentFieldValue.text).toList()
     }
 
 
@@ -504,9 +528,8 @@ fun NoteDetailScreen(
                             // Render whole code block background containers behind the text
                             textLayoutResult?.let { layoutResult ->
                                 if (contentFieldValue.text.isNotEmpty() && layoutResult.layoutInput.text.length == contentFieldValue.text.length) {
-                                    val fencedMatches = FENCED_CODE_REGEX.findAll(contentFieldValue.text)
                                     val codeBgColor = syntaxColors.background ?: surfaceVariant
-                                    for (match in fencedMatches) {
+                                    for (match in cachedFencedMatches) {
                                         val language = match.groupValues[1]
                                         val content = match.groupValues[2]
                                         val startOffset = match.range.first.coerceIn(0, contentFieldValue.text.length - 1)
@@ -588,8 +611,7 @@ fun NoteDetailScreen(
                                     }
                                 }
 
-                                val matches = TODO_LINE_REGEX.findAll(contentFieldValue.text)
-                                for (match in matches) {
+                                for (match in cachedTodoMatches) {
                                     val isChecked = match.value.contains("x", ignoreCase = true)
                                     // We want the bounding box of the '-' character to align perfectly with lists
                                     val boxStartOffset = match.range.first + match.value.indexOf('-')
@@ -635,9 +657,8 @@ fun NoteDetailScreen(
                                 }
 
                                 // Language selector menus for code blocks
-                                val codeBlockMatches = FENCED_CODE_REGEX.findAll(contentFieldValue.text).toList()
                                 val enabledLangs = appSettings.enabledLanguages
-                                for ((blockIndex, match) in codeBlockMatches.withIndex()) {
+                                for ((blockIndex, match) in cachedFencedMatches.withIndex()) {
                                     val language = match.groupValues[1]
                                     val trimmedLang = language.trim()
                                     val startOffset = match.range.first.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
@@ -754,8 +775,7 @@ fun NoteDetailScreen(
                                 }
 
                                 // Inline Image Overlays
-                                val imageMatches = IMAGE_MARKDOWN_REGEX.findAll(contentFieldValue.text)
-                                for (match in imageMatches) {
+                                for (match in cachedImageMatches) {
                                     val isCursorInside = contentFieldValue.selection.start in match.range.first..(match.range.last + 1)
                                     if (!isCursorInside) {
                                         val safeOffset = match.range.first.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
@@ -772,12 +792,15 @@ fun NoteDetailScreen(
                                         val widthDp = with(density) { containerWidthPx.toDp() }
                                         val painter = rememberAsyncImagePainter(model = path)
                                         val intrinsicSize = painter.intrinsicSize
-                                        
-                                        // Cache aspect ratio inside state map to dynamically update transformation
-                                        if (intrinsicSize.width > 0 && intrinsicSize.height > 0) {
-                                            val r = intrinsicSize.width / intrinsicSize.height
-                                            if (imageAspectRatios[path] != r) {
-                                                imageAspectRatios[path] = r
+
+                                        // Cache aspect ratio — uses SideEffect to avoid mutating snapshot
+                                        // state during composition (which would violate Compose's contract).
+                                        SideEffect {
+                                            if (intrinsicSize.width > 0 && intrinsicSize.height > 0) {
+                                                val r = intrinsicSize.width / intrinsicSize.height
+                                                if (imageAspectRatios[path] != r) {
+                                                    imageAspectRatios[path] = r
+                                                }
                                             }
                                         }
 
@@ -869,190 +892,3 @@ fun NoteDetailScreen(
     }
 }
 
-// ── Toolbar insertion logic ────────────────────────────────────────────────────
-
-private data class InsertionResult(val newValue: TextFieldValue)
-
-private fun buildInsertedValue(syntax: String, current: TextFieldValue): InsertionResult {
-    val sel = current.selection
-    val text = current.text
-    val selectedText = if (sel.start != sel.end) text.substring(sel.start, sel.end) else ""
-
-    val (insertion, cursorOffset) = when (syntax) {
-        "h1"        -> if (selectedText.isNotEmpty()) "# $selectedText" to 0 else "# " to 2
-        "h2"        -> if (selectedText.isNotEmpty()) "## $selectedText" to 0 else "## " to 3
-        "h3"        -> if (selectedText.isNotEmpty()) "### $selectedText" to 0 else "### " to 4
-        "h4"        -> if (selectedText.isNotEmpty()) "#### $selectedText" to 0 else "#### " to 5
-        "bold"      -> if (selectedText.isNotEmpty()) "**$selectedText**" to 0 else "****" to 2
-        "italic"    -> if (selectedText.isNotEmpty()) "*$selectedText*" to 0 else "**" to 1
-        "underline" -> if (selectedText.isNotEmpty()) "<u>$selectedText</u>" to 0 else "<u></u>" to 3
-        "code"      -> if (selectedText.isNotEmpty()) "`$selectedText`" to 0 else "``" to 1
-        "codeblock" -> {
-            val prefix = if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "" else "\n"
-            if (selectedText.isNotEmpty()) {
-                "${prefix}```\n$selectedText\n```\n" to (prefix.length + 4 + selectedText.length)
-            } else {
-                "${prefix}```\n\n```\n" to (prefix.length + 4)
-            }
-        }
-        "ul"        -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "- " to 2 else "\n- " to 3
-        "ol"        -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "1. " to 3 else "\n1. " to 4
-        "todo"      -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "- [ ] " to 6 else "\n- [ ] " to 7
-        "quote"     -> if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') "> " to 2 else "\n> " to 3
-        "hr"        -> "\n---\n" to 5
-        else        -> syntax to syntax.length
-    }
-
-    val newText = if (selectedText.isNotEmpty()) {
-        text.substring(0, sel.start) + insertion + text.substring(sel.end)
-    } else {
-        text.substring(0, sel.start) + insertion + text.substring(sel.start)
-    }
-    val newCursor = if (selectedText.isNotEmpty()) sel.start + insertion.length
-                    else sel.start + cursorOffset
-
-    return InsertionResult(TextFieldValue(newText, TextRange(newCursor)))
-}
-
-// ── Toolbar UI ─────────────────────────────────────────────────────────────────
-
-private enum class ToolbarState { Main, Headings, Formatting, Lists }
-
-@Composable
-private fun MarkdownToolbar(
-    onInsert: (String) -> Unit,
-    onPickPhoto: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var state by remember { mutableStateOf(ToolbarState.Main) }
-
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(50),
-        tonalElevation = 6.dp,
-        shadowElevation = 4.dp
-    ) {
-        AnimatedContent(
-            targetState = state,
-            label = "toolbar_state"
-        ) { targetState ->
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                when (targetState) {
-                    ToolbarState.Main -> {
-                        ToolbarIconButton(Icons.Default.Title, "Headings") { state = ToolbarState.Headings }
-                        ToolbarDivider()
-                        ToolbarIconButton(Icons.Default.FormatBold, "Formatting") { state = ToolbarState.Formatting }
-                        ToolbarDivider()
-                        ToolbarIconButton(Icons.Default.Code, "Code Block") { onInsert("codeblock") }
-                        ToolbarDivider()
-                        ToolbarIconButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Lists") { state = ToolbarState.Lists }
-                        ToolbarDivider()
-                        ToolbarIconButton(Icons.Default.Image, "Insert Photo") { onPickPhoto() }
-                    }
-                    ToolbarState.Headings -> {
-                        ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
-                        ToolbarDivider()
-                        ToolbarTextButton("H1") { onInsert("h1"); state = ToolbarState.Main }
-                        ToolbarTextButton("H2") { onInsert("h2"); state = ToolbarState.Main }
-                        ToolbarTextButton("H3") { onInsert("h3"); state = ToolbarState.Main }
-                        ToolbarTextButton("H4") { onInsert("h4"); state = ToolbarState.Main }
-                    }
-                    ToolbarState.Formatting -> {
-                        ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
-                        ToolbarDivider()
-                        ToolbarIconButton(Icons.Default.FormatBold, "Bold") { onInsert("bold"); state = ToolbarState.Main }
-                        ToolbarIconButton(Icons.Default.FormatItalic, "Italic") { onInsert("italic"); state = ToolbarState.Main }
-                        ToolbarIconButton(Icons.Default.FormatUnderlined, "Underline") { onInsert("underline"); state = ToolbarState.Main }
-                    }
-                    ToolbarState.Lists -> {
-                        ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
-                        ToolbarDivider()
-                        ToolbarIconButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Bullet") { onInsert("ul"); state = ToolbarState.Main }
-                        ToolbarIconButton(Icons.Default.FormatListNumbered, "Numbered") { onInsert("ol"); state = ToolbarState.Main }
-                        ToolbarIconButton(Icons.Default.Checklist, "Todo") { onInsert("todo"); state = ToolbarState.Main }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolbarIconButton(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit
-) {
-    val haptics = LocalHapticFeedback.current
-    FilledTonalIconButton(
-        onClick = {
-            haptics.tap()
-            onClick()
-        },
-        modifier = Modifier.size(40.dp),
-        shape = RoundedCornerShape(10.dp),
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        )
-    ) {
-        Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun ToolbarTextButton(
-    text: String,
-    onClick: () -> Unit
-) {
-    val haptics = LocalHapticFeedback.current
-    FilledTonalIconButton(
-        onClick = {
-            haptics.tap()
-            onClick()
-        },
-        modifier = Modifier.size(40.dp),
-        shape = RoundedCornerShape(10.dp),
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        )
-    ) {
-        Text(text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-    }
-}
-
-@Composable
-private fun ToolbarDivider() {
-    VerticalDivider(
-        modifier = Modifier
-            .height(28.dp)
-            .padding(horizontal = 4.dp),
-        color = MaterialTheme.colorScheme.outlineVariant
-    )
-}
-
-private fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri): String? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-        val fileName = "img_${System.currentTimeMillis()}.jpg"
-        val file = java.io.File(context.filesDir, fileName)
-        val outputStream = java.io.FileOutputStream(file)
-        inputStream.use { input ->
-            outputStream.use { output ->
-                input.copyTo(output)
-            }
-        }
-        file.absolutePath
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
-    }
-}
