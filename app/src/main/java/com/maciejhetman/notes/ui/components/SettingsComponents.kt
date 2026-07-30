@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
@@ -22,6 +24,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -109,12 +112,15 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
     Card(
         modifier = Modifier
             .padding(horizontal = 16.dp)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .height(320.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             val transformedText = transformation.filter(androidx.compose.ui.text.AnnotatedString(sampleMarkdown)).text
             var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -153,6 +159,48 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
                                         shape = RoundedCornerShape(8.dp)
                                     )
                             )
+                            
+                            val trimmedLang = language.trim()
+                            val displayLangName = com.maciejhetman.notes.ui.screens.SUPPORTED_LANGUAGES.firstOrNull {
+                                it.tag.equals(trimmedLang, ignoreCase = true) || (it.tag.isEmpty() && trimmedLang.isBlank())
+                            }?.name ?: if (trimmedLang.isNotBlank()) trimmedLang.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } else "Plain text"
+
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(0, startY.toInt()) }
+                                    .fillMaxWidth()
+                                    .padding(start = 8.dp, top = 6.dp),
+                                contentAlignment = Alignment.TopStart
+                            ) {
+                                androidx.compose.material3.Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
+                                    shape = RoundedCornerShape(16.dp),
+                                    tonalElevation = 3.dp,
+                                    shadowElevation = 1.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = displayLangName,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontSize = (12.5f * settings.fontSizeScale).sp
+                                            )
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
