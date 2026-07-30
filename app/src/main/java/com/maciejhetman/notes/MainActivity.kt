@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
 
             NotesTheme(
                 themeMode = settings.themeMode,
+                themeColor = settings.themeColor,
                 dynamicColor = settings.dynamicColor,
                 amoledBlack = settings.amoledBlack
             ) {

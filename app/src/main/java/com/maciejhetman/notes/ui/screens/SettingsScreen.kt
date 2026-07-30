@@ -113,6 +113,17 @@ fun SettingsScreen(
                     )
                 }
 
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !settings.dynamicColor) {
+                    SettingsDivider()
+                    SettingsMenuRow(
+                        title = "Color",
+                        options = com.maciejhetman.notes.data.AppThemeColor.entries,
+                        selected = settings.themeColor,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setThemeColor
+                    )
+                }
+
                 SettingsDivider()
                 SettingsSwitchRow(
                     title = "AMOLED black",

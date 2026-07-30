@@ -46,8 +46,17 @@ enum class EditorLineSpacing(val multiplier: Float, val label: String) {
     RELAXED(1.5f, "Relaxed")
 }
 
+enum class AppThemeColor(val label: String) {
+    DEFAULT("Default"),
+    BLUE("Blue"),
+    GREEN("Green"),
+    PURPLE("Purple"),
+    RED("Red")
+}
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeColor: AppThemeColor = AppThemeColor.DEFAULT,
     val dynamicColor: Boolean = true,
     val amoledBlack: Boolean = false,
     val lineNumberMode: LineNumberMode = LineNumberMode.OFF,
@@ -64,6 +73,7 @@ class SettingsRepository(private val context: Context) {
 
     private object Keys {
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val THEME_COLOR = stringPreferencesKey("theme_color")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val AMOLED_BLACK = booleanPreferencesKey("amoled_black")
         val LINE_NUMBER_MODE = stringPreferencesKey("line_number_mode")
@@ -77,6 +87,7 @@ class SettingsRepository(private val context: Context) {
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
         AppSettings(
             themeMode = prefs[Keys.THEME_MODE]?.toEnumOrNull<ThemeMode>() ?: ThemeMode.SYSTEM,
+            themeColor = prefs[Keys.THEME_COLOR]?.toEnumOrNull<AppThemeColor>() ?: AppThemeColor.DEFAULT,
             dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: true,
             amoledBlack = prefs[Keys.AMOLED_BLACK] ?: false,
             lineNumberMode = prefs[Keys.LINE_NUMBER_MODE]?.toEnumOrNull<LineNumberMode>() ?: LineNumberMode.OFF,
@@ -90,6 +101,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setThemeMode(mode: ThemeMode) {
         context.settingsDataStore.edit { it[Keys.THEME_MODE] = mode.name }
+    }
+
+    suspend fun setThemeColor(color: AppThemeColor) {
+        context.settingsDataStore.edit { it[Keys.THEME_COLOR] = color.name }
     }
 
     suspend fun setDynamicColor(enabled: Boolean) {

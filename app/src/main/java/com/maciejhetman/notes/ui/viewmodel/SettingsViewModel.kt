@@ -28,6 +28,10 @@ class SettingsViewModel(
         viewModelScope.launch { repository.setThemeMode(mode) }
     }
 
+    fun setThemeColor(color: com.maciejhetman.notes.data.AppThemeColor) {
+        viewModelScope.launch { repository.setThemeColor(color) }
+    }
+
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { repository.setDynamicColor(enabled) }
     }

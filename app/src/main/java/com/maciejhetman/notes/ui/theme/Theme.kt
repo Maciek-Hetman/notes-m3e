@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.WindowCompat
+import com.maciejhetman.notes.data.AppThemeColor
 import com.maciejhetman.notes.data.ThemeMode
 
 private val DarkColorScheme = darkColorScheme(
@@ -70,23 +71,42 @@ private val LightColorScheme = lightColorScheme(
     onSurface = OnSurfaceLight,
 )
 
-// True-black overrides layered on top of a resolved dark scheme for AMOLED displays. Accent
-// colors (primary/secondary/tertiary) are left untouched — only surfaces are crushed to black.
 private fun ColorScheme.toAmoled(): ColorScheme = copy(
     background = Color.Black,
     surface = Color.Black,
     surfaceDim = Color.Black,
     surfaceContainerLowest = Color.Black,
-    surfaceContainerLow = Color(0xFF0A0A0A),
-    surfaceContainer = Color(0xFF101010),
-    surfaceContainerHigh = Color(0xFF181818),
-    surfaceContainerHighest = Color(0xFF222222)
+    surfaceContainerLow = Color(0xFF1A1A1A),
+    surfaceContainer = Color(0xFF242424),
+    surfaceContainerHigh = Color(0xFF2E2E2E),
+    surfaceContainerHighest = Color(0xFF383838)
 )
+
+private fun getCustomColorScheme(isDark: Boolean, themeColor: AppThemeColor): ColorScheme {
+    return if (isDark) {
+        when (themeColor) {
+            AppThemeColor.DEFAULT -> DarkColorScheme
+            AppThemeColor.BLUE -> darkColorScheme(primary = Color(0xFF9ECAFF), secondary = Color(0xFFBBC7DB), tertiary = Color(0xFFD6BEE4))
+            AppThemeColor.GREEN -> darkColorScheme(primary = Color(0xFF9CD67D), secondary = Color(0xFFBDCBAE), tertiary = Color(0xFFA0CFD0))
+            AppThemeColor.PURPLE -> darkColorScheme(primary = Color(0xFFD0BCFF), secondary = Color(0xFFCCC2DC), tertiary = Color(0xFFEFB8C8))
+            AppThemeColor.RED -> darkColorScheme(primary = Color(0xFFF2B8B5), secondary = Color(0xFFE7BDB8), tertiary = Color(0xFFE5C158))
+        }
+    } else {
+        when (themeColor) {
+            AppThemeColor.DEFAULT -> LightColorScheme
+            AppThemeColor.BLUE -> lightColorScheme(primary = Color(0xFF0061A4), secondary = Color(0xFF535F70), tertiary = Color(0xFF6B5778))
+            AppThemeColor.GREEN -> lightColorScheme(primary = Color(0xFF386A20), secondary = Color(0xFF55624C), tertiary = Color(0xFF19686A))
+            AppThemeColor.PURPLE -> lightColorScheme(primary = Color(0xFF6750A4), secondary = Color(0xFF625B71), tertiary = Color(0xFF7D5260))
+            AppThemeColor.RED -> lightColorScheme(primary = Color(0xFFB3261E), secondary = Color(0xFF775652), tertiary = Color(0xFF755B00))
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NotesTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    themeColor: AppThemeColor = AppThemeColor.DEFAULT,
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
     amoledBlack: Boolean = false,
@@ -104,8 +124,7 @@ fun NotesTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        else -> getCustomColorScheme(darkTheme, themeColor)
     }.let { scheme -> if (darkTheme && amoledBlack) scheme.toAmoled() else scheme }
 
     val view = LocalView.current
