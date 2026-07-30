@@ -14,6 +14,7 @@ data class CodeHighlightColors(
     val string: Color,
     val number: Color,
     val comment: Color,
+    val builtIn: Color,
     val background: Color? = null,
     val textColor: Color? = null
 )
@@ -57,6 +58,7 @@ fun resolveSyntaxThemeColors(
             string = fallbackTertiary,
             number = fallbackSecondary,
             comment = fallbackOnSurface.copy(alpha = 0.45f),
+            builtIn = if (isDark) Color(0xFF81D4FA) else Color(0xFF0288D1),
             background = fallbackSurfaceVariant,
             textColor = fallbackOnSurface
         )
@@ -65,6 +67,7 @@ fun resolveSyntaxThemeColors(
             string = Color(0xFFA6E22E),
             number = Color(0xFFAE81FF),
             comment = Color(0xFF75715E),
+            builtIn = Color(0xFF66D9EF),
             background = Color(0xFF272822),
             textColor = Color(0xFFF8F8F2)
         )
@@ -73,6 +76,7 @@ fun resolveSyntaxThemeColors(
             string = Color(0xFFF1FA8C),
             number = Color(0xFFBD93F9),
             comment = Color(0xFF6272A4),
+            builtIn = Color(0xFF8BE9FD),
             background = Color(0xFF282A36),
             textColor = Color(0xFFF8F8F2)
         )
@@ -82,6 +86,7 @@ fun resolveSyntaxThemeColors(
                 string = Color(0xFF2AA198),
                 number = Color(0xFFD33682),
                 comment = Color(0xFF586E75),
+                builtIn = Color(0xFF268BD2),
                 background = Color(0xFF002B36),
                 textColor = Color(0xFF839496)
             )
@@ -91,6 +96,7 @@ fun resolveSyntaxThemeColors(
                 string = Color(0xFF2AA198),
                 number = Color(0xFFD33682),
                 comment = Color(0xFF93A1A1),
+                builtIn = Color(0xFF268BD2),
                 background = Color(0xFFFDF6E3),
                 textColor = Color(0xFF657B83)
             )
@@ -101,6 +107,7 @@ fun resolveSyntaxThemeColors(
                 string = Color(0xFFA5D6FF),
                 number = Color(0xFF79C0FF),
                 comment = Color(0xFF8B949E),
+                builtIn = Color(0xFFD2A8FF),
                 background = Color(0xFF161B22),
                 textColor = Color(0xFFC9D1D9)
             )
@@ -110,6 +117,7 @@ fun resolveSyntaxThemeColors(
                 string = Color(0xFF0A3069),
                 number = Color(0xFF0550AE),
                 comment = Color(0xFF6E7781),
+                builtIn = Color(0xFF6F42C1),
                 background = Color(0xFFF6F8FA),
                 textColor = Color(0xFF24292F)
             )
@@ -119,6 +127,7 @@ fun resolveSyntaxThemeColors(
             string = Color(0xFFA3BE8C),
             number = Color(0xFFB48EAD),
             comment = Color(0xFF616E88),
+            builtIn = Color(0xFF88C0D0),
             background = Color(0xFF2E3440),
             textColor = Color(0xFFD8DEE9)
         )
@@ -130,7 +139,8 @@ fun resolveSyntaxThemeColors(
 private data class LanguageSyntax(
     val lineComments: List<String> = emptyList(),
     val blockComments: List<Pair<String, String>> = emptyList(),
-    val keywords: Set<String> = emptySet()
+    val keywords: Set<String> = emptySet(),
+    val builtIns: Set<String> = emptySet()
 )
 
 // Fallback used for unknown/unspecified languages — covers the most common comment/string
@@ -167,8 +177,10 @@ private val LANGUAGE_SYNTAX = mapOf(
         lineComments = listOf("#"),
         keywords = setOf(
             "if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done",
-            "case", "esac", "function", "return", "exit", "export", "local", "readonly",
-            "echo", "read", "in", "select", "sudo", "cd", "set", "unset", "shift", "break", "continue"
+            "case", "esac", "function", "return", "exit", "in", "select", "break", "continue"
+        ),
+        builtIns = setOf(
+            "echo", "read", "sudo", "cd", "set", "unset", "shift", "export", "local", "readonly"
         )
     ),
     "python" to LanguageSyntax(
@@ -178,6 +190,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "with", "as", "import", "from", "return", "yield", "lambda", "pass", "break",
             "continue", "raise", "in", "is", "not", "and", "or", "None", "True", "False",
             "global", "nonlocal", "assert", "async", "await", "self", "del"
+        ),
+        builtIns = setOf(
+            "print", "len", "range", "type", "int", "str", "float", "list", "dict", "set",
+            "tuple", "open", "super", "dir", "help", "enumerate", "zip", "map", "filter"
         )
     ),
     "javascript" to LanguageSyntax(
@@ -186,6 +202,11 @@ private val LANGUAGE_SYNTAX = mapOf(
         keywords = C_STYLE_KEYWORDS + setOf(
             "function", "var", "let", "const", "async", "await", "yield", "typeof",
             "instanceof", "in", "of", "delete", "export", "default", "undefined", "NaN"
+        ),
+        builtIns = setOf(
+            "console", "log", "error", "warn", "info", "require", "setTimeout", "setInterval",
+            "clearTimeout", "clearInterval", "Math", "JSON", "Promise", "Object", "Array",
+            "String", "Number", "Boolean", "Date", "window", "document"
         )
     ),
     "typescript" to LanguageSyntax(
@@ -195,6 +216,11 @@ private val LANGUAGE_SYNTAX = mapOf(
             "function", "var", "let", "const", "async", "await", "yield", "typeof",
             "instanceof", "in", "of", "delete", "export", "default", "undefined", "NaN",
             "type", "as", "readonly", "namespace", "declare", "abstract", "implements"
+        ),
+        builtIns = setOf(
+            "console", "log", "error", "warn", "info", "require", "setTimeout", "setInterval",
+            "clearTimeout", "clearInterval", "Math", "JSON", "Promise", "Object", "Array",
+            "String", "Number", "Boolean", "Date", "window", "document", "Record", "Omit", "Pick"
         )
     ),
     "kotlin" to LanguageSyntax(
@@ -207,6 +233,11 @@ private val LANGUAGE_SYNTAX = mapOf(
             "finally", "throw", "companion", "override", "private", "public", "protected",
             "internal", "open", "sealed", "data", "enum", "abstract", "suspend", "inline",
             "vararg", "lateinit", "by", "init", "constructor", "typealias", "it"
+        ),
+        builtIns = setOf(
+            "println", "print", "require", "check", "error", "arrayOf", "listOf", "mapOf",
+            "setOf", "mutableListOf", "mutableMapOf", "mutableSetOf", "let", "run", "with",
+            "apply", "also", "String", "Int", "Boolean", "Double", "Float", "Long"
         )
     ),
     "java" to LanguageSyntax(
@@ -215,6 +246,9 @@ private val LANGUAGE_SYNTAX = mapOf(
         keywords = C_STYLE_KEYWORDS + setOf(
             "int", "long", "short", "byte", "float", "double", "boolean", "char", "String",
             "abstract", "final", "synchronized", "volatile", "transient", "instanceof", "assert"
+        ),
+        builtIns = setOf(
+            "System", "out", "println", "print", "printf", "Math", "Object", "Integer", "Double"
         )
     ),
     "c" to LanguageSyntax(
@@ -225,6 +259,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "continue", "return", "int", "long", "short", "float", "double", "char", "void",
             "const", "static", "struct", "union", "enum", "typedef", "sizeof", "unsigned",
             "signed", "extern", "goto", "include", "define"
+        ),
+        builtIns = setOf(
+            "printf", "scanf", "malloc", "free", "calloc", "realloc", "puts", "gets",
+            "fprintf", "fscanf", "sprintf", "sscanf", "fopen", "fclose", "NULL"
         )
     ),
     "cpp" to LanguageSyntax(
@@ -234,6 +272,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "int", "long", "short", "float", "double", "char", "bool", "void", "namespace",
             "using", "template", "typename", "virtual", "override", "nullptr", "auto",
             "constexpr", "friend", "operator", "delete"
+        ),
+        builtIns = setOf(
+            "printf", "scanf", "cout", "cin", "endl", "malloc", "free", "sizeof", "new",
+            "std", "vector", "string", "map", "set", "list", "unique_ptr", "shared_ptr"
         )
     ),
     "csharp" to LanguageSyntax(
@@ -242,6 +284,10 @@ private val LANGUAGE_SYNTAX = mapOf(
         keywords = C_STYLE_KEYWORDS + setOf(
             "using", "namespace", "int", "string", "bool", "var", "async", "await", "get",
             "set", "override", "virtual", "sealed", "readonly", "params", "out", "ref"
+        ),
+        builtIns = setOf(
+            "Console", "WriteLine", "Write", "Math", "String", "Object", "Int32", "Task",
+            "Exception", "List", "Dictionary", "IEnumerable", "IEnumerator"
         )
     ),
     "go" to LanguageSyntax(
@@ -251,6 +297,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "func", "package", "import", "var", "const", "type", "struct", "interface",
             "if", "else", "for", "range", "switch", "case", "default", "return", "break",
             "continue", "go", "defer", "chan", "select", "map", "true", "false", "nil"
+        ),
+        builtIns = setOf(
+            "println", "print", "make", "new", "len", "cap", "append", "copy", "delete",
+            "panic", "recover", "close", "complex", "real", "imag", "fmt", "Printf", "Println"
         )
     ),
     "rust" to LanguageSyntax(
@@ -261,6 +311,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "break", "continue", "struct", "enum", "impl", "trait", "pub", "use", "mod",
             "crate", "self", "Self", "super", "true", "false", "None", "Some", "Ok", "Err",
             "async", "await", "move", "ref", "where", "dyn", "static", "const"
+        ),
+        builtIns = setOf(
+            "println", "print", "format", "panic", "vec", "String", "Vec", "Box", "Option",
+            "Result", "HashMap", "HashSet"
         )
     ),
     "ruby" to LanguageSyntax(
@@ -268,7 +322,11 @@ private val LANGUAGE_SYNTAX = mapOf(
         keywords = setOf(
             "def", "end", "if", "elsif", "else", "unless", "while", "until", "for", "in",
             "do", "class", "module", "self", "return", "yield", "begin", "rescue", "ensure",
-            "raise", "true", "false", "nil", "require", "attr_accessor", "puts", "then"
+            "raise", "true", "false", "nil", "require", "attr_accessor", "then"
+        ),
+        builtIns = setOf(
+            "puts", "print", "p", "include", "extend", "loop", "catch", "throw",
+            "attr_reader", "attr_writer", "String", "Array", "Hash", "Symbol"
         )
     ),
     "php" to LanguageSyntax(
@@ -278,6 +336,9 @@ private val LANGUAGE_SYNTAX = mapOf(
             "function", "echo", "namespace", "use", "array", "foreach", "as", "require",
             "require_once", "include", "include_once", "public", "private", "protected",
             "abstract", "final", "instanceof"
+        ),
+        builtIns = setOf(
+            "echo", "print", "printf", "isset", "empty", "die", "exit"
         )
     ),
     "sql" to LanguageSyntax(
@@ -289,6 +350,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "into", "values", "set", "table", "create", "drop", "alter", "index", "primary",
             "key", "foreign", "references", "not", "null", "and", "or", "as", "distinct",
             "union", "all", "exists", "in", "like", "between", "case", "when", "then", "end"
+        ),
+        builtIns = setOf(
+            "count", "sum", "avg", "min", "max", "cast", "convert", "coalesce", "nullif",
+            "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "CONVERT", "COALESCE", "NULLIF"
         )
     ),
     "swift" to LanguageSyntax(
@@ -300,6 +365,10 @@ private val LANGUAGE_SYNTAX = mapOf(
             "import", "guard", "true", "false", "nil", "self", "super", "init", "deinit",
             "private", "public", "internal", "fileprivate", "static", "override", "throws",
             "try", "catch", "async", "await", "in"
+        ),
+        builtIns = setOf(
+            "print", "fatalError", "assert", "precondition", "Array", "String", "Dictionary",
+            "Set", "Optional"
         )
     ),
     "yaml" to LanguageSyntax(
@@ -405,6 +474,8 @@ fun AnnotatedString.Builder.applySyntaxHighlighting(
             val word = code.substring(i, j)
             if (word in syntax.keywords) {
                 addToken(SpanStyle(color = colors.keyword, fontWeight = FontWeight.SemiBold), i, j)
+            } else if (word in syntax.builtIns) {
+                addToken(SpanStyle(color = colors.builtIn), i, j)
             }
             i = j
             continue

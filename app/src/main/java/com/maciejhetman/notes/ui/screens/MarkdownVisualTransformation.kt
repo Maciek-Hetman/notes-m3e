@@ -107,7 +107,8 @@ class MarkdownVisualTransformation(
         keyword = keywordColor,
         string = stringColor,
         number = numberColor,
-        comment = onSurfaceColor.copy(alpha = 0.45f)
+        comment = onSurfaceColor.copy(alpha = 0.45f),
+        builtIn = keywordColor
     )
 
     private val effectiveCodeBg = codeHighlightColors.background ?: codeBackground
