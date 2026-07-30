@@ -189,8 +189,15 @@ fun NoteDetailScreen(
     val fontScale = appSettings.fontSizeScale
     val fontFamily = appSettings.fontFamily.toComposeFontFamily()
 
+    val isDark = when (appSettings.themeMode) {
+        com.maciejhetman.notes.data.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+        com.maciejhetman.notes.data.ThemeMode.LIGHT -> false
+        com.maciejhetman.notes.data.ThemeMode.DARK -> true
+    }
+
     val syntaxColors = resolveSyntaxThemeColors(
         theme = appSettings.syntaxTheme,
+        isDark = isDark,
         fallbackPrimary = primaryColor,
         fallbackSecondary = secondaryColor,
         fallbackTertiary = tertiaryColor,
@@ -200,7 +207,7 @@ fun NoteDetailScreen(
 
     // Width reserved for line-number digits; kept in both Dp (for the overlay Text below) and
     // Sp (for the transformation's paragraph indent) so the two line up pixel-for-pixel.
-    val gutterWidthDp = (32f * fontScale).dp
+    val gutterWidthDp = (24f * fontScale).dp
     val gutterWidthSp = with(density) { gutterWidthDp.toSp() }
 
     // Real rendered width of the content field — used so the reserved height for inline
@@ -412,7 +419,12 @@ fun NoteDetailScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .padding(
+                            start = if (appSettings.lineNumberMode != LineNumberMode.OFF) 10.dp else 20.dp,
+                            end = 20.dp,
+                            top = 8.dp,
+                            bottom = 8.dp
+                        )
                         .bringIntoViewRequester(bringIntoViewRequester)
                         .focusRequester(contentFocusRequester)
                         .pointerInput(Unit) {
@@ -462,7 +474,7 @@ fun NoteDetailScreen(
                         fontFamily = fontFamily,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale).sp,
-                        lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+                        lineHeight = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale * appSettings.lineSpacing.multiplier).sp
                     ),
                     visualTransformation = markdownTransformation,
                     onTextLayout = { textLayoutResult = it },
@@ -476,14 +488,16 @@ fun NoteDetailScreen(
                                         fontFamily = fontFamily,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
                                         fontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale).sp,
-                                        lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
-                                    )
+                                        lineHeight = (MaterialTheme.typography.bodyLarge.fontSize.value * fontScale * appSettings.lineSpacing.multiplier).sp
+                                    ),
+                                    modifier = if (appSettings.lineNumberMode != LineNumberMode.OFF) Modifier.padding(start = gutterWidthDp) else Modifier
                                 )
                             }
                             innerTextField()
                             
                             textLayoutResult?.let { layoutResult ->
                                 if (contentFieldValue.text.isEmpty()) return@let
+                                if (layoutResult.layoutInput.text.length != contentFieldValue.text.length) return@let
 
                                 if (appSettings.lineNumberMode != LineNumberMode.OFF) {
                                     val numberedLines = computeNumberedLines(contentFieldValue.text, appSettings.lineNumberMode)
@@ -491,20 +505,26 @@ fun NoteDetailScreen(
                                         val safeOffset = numbered.startOffset.coerceIn(0, (contentFieldValue.text.length - 1).coerceAtLeast(0))
                                         if (safeOffset >= layoutResult.layoutInput.text.length) continue
                                         val lineIndex = layoutResult.getLineForOffset(safeOffset)
-                                        val top = layoutResult.getLineTop(lineIndex)
-                                        Text(
-                                            text = numbered.number.toString(),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
-                                                fontSize = (MaterialTheme.typography.labelSmall.fontSize.value * fontScale).sp
-                                            ),
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                                        val lineTop = layoutResult.getLineTop(lineIndex)
+                                        val lineBottom = layoutResult.getLineBottom(lineIndex)
+                                        val lineHeightDp = with(density) { (lineBottom - lineTop).toDp() }
+                                        Box(
                                             modifier = Modifier
-                                                .offset { IntOffset(0, top.toInt()) }
+                                                .offset { IntOffset(0, lineTop.toInt()) }
                                                 .width(gutterWidthDp)
-                                                .padding(end = 6.dp)
-                                        )
+                                                .height(lineHeightDp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            Text(
+                                                text = numbered.number.toString(),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                                                    fontSize = (MaterialTheme.typography.labelSmall.fontSize.value * fontScale).sp
+                                                ),
+                                                modifier = Modifier.padding(start = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
 

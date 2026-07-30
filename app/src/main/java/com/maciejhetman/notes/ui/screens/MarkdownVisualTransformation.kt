@@ -61,7 +61,7 @@ fun computeNumberedLines(text: String, mode: LineNumberMode): List<NumberedLine>
             for (line in text.split('\n')) {
                 lineNumber++
                 val lineEnd = (offset + line.length).coerceAtMost(text.length)
-                if (lineEnd > offset) result += NumberedLine(offset, lineEnd, lineNumber)
+                result += NumberedLine(offset, lineEnd, lineNumber)
                 offset += line.length + 1
             }
             result
@@ -75,7 +75,7 @@ fun computeNumberedLines(text: String, mode: LineNumberMode): List<NumberedLine>
                 var lineOffset = contentStart
                 content.split('\n').forEachIndexed { index, line ->
                     val lineEnd = (lineOffset + line.length).coerceAtMost(text.length)
-                    if (lineEnd > lineOffset) result += NumberedLine(lineOffset, lineEnd, index + 1)
+                    result += NumberedLine(lineOffset, lineEnd, index + 1)
                     lineOffset += line.length + 1
                 }
             }
@@ -90,20 +90,14 @@ class MarkdownVisualTransformation(
     private val codeBackground: Color,
     private val selection: TextRange,
     private val imageAspectRatios: Map<String, Float>,
-    // Width (in dp, expressed as a plain float) that images are actually rendered at.
     private val containerWidthDp: Float = 320f,
-    // Colors used for syntax highlighting inside fenced code blocks.
     keywordColor: Color = primaryColor,
     stringColor: Color = primaryColor,
     numberColor: Color = primaryColor,
     customHighlightColors: CodeHighlightColors? = null,
-    // Font family applied to text
     private val fontFamily: FontFamily = FontFamily.Default,
-    // Scales every visible font size in this transformation (headings, code, markers) to match
-    // the user's font-size preference.
     private val fontScale: Float = 1f,
     private val lineNumberMode: LineNumberMode = LineNumberMode.OFF,
-    // Indent reserved per numbered line, pre-converted to Sp by the caller
     private val gutterWidth: TextUnit = 0.sp
 ) : VisualTransformation {
 
@@ -123,8 +117,6 @@ class MarkdownVisualTransformation(
         val fencedMatches = FENCED_CODE_REGEX.findAll(raw).toList()
         fun isInsideFence(range: IntRange) = fencedMatches.any { it.range.first <= range.first && range.last <= it.range.last }
 
-        // Replace list hyphens/asterisks with a dot, preserving length — but leave fenced
-        // code bodies untouched (e.g. a shell comment starting with "- " shouldn't become a bullet).
         val modifiedRaw = LIST_MARKER_REGEX.replace(raw) { match ->
             if (isInsideFence(match.range)) match.value else "${match.groupValues[1]}• "
         }
@@ -139,15 +131,30 @@ class MarkdownVisualTransformation(
         return TransformedText(annotated, OffsetMapping.Identity)
     }
 
-    // ── Line numbers ─────────────────────────────────────────────────────
-
     private fun AnnotatedString.Builder.applyLineNumberIndent(text: String) {
-        if (lineNumberMode == LineNumberMode.OFF || gutterWidth.value <= 0f) return
-        computeNumberedLines(text, lineNumberMode).forEach { line ->
-            addStyle(
-                ParagraphStyle(textIndent = TextIndent(gutterWidth, gutterWidth)),
-                line.startOffset, line.endOffsetExclusive
-            )
+        if (lineNumberMode == LineNumberMode.OFF || gutterWidth.value <= 0f || text.isEmpty()) return
+        when (lineNumberMode) {
+            LineNumberMode.ALL_LINES -> {
+                addStyle(
+                    ParagraphStyle(textIndent = TextIndent(gutterWidth, gutterWidth)),
+                    0, text.length
+                )
+            }
+            LineNumberMode.CODE_BLOCKS_ONLY -> {
+                FENCED_CODE_REGEX.findAll(text).forEach { match ->
+                    val language = match.groupValues[1]
+                    val content = match.groupValues[2]
+                    val contentStart = match.range.first + 3 + language.length + 1
+                    val contentEnd = (contentStart + content.length).coerceAtMost(text.length)
+                    if (contentEnd > contentStart) {
+                        addStyle(
+                            ParagraphStyle(textIndent = TextIndent(gutterWidth, gutterWidth)),
+                            contentStart, contentEnd
+                        )
+                    }
+                }
+            }
+            LineNumberMode.OFF -> {}
         }
     }
 
@@ -168,11 +175,9 @@ class MarkdownVisualTransformation(
             val closeFenceStart = contentEnd + 1 // skip the newline before the closing fence
             val closeFenceEnd = closeFenceStart + 3
 
-            // Make the ``` fences disappear entirely, just like inline code backticks.
             addStyle(hiddenFenceStyle, openFenceStart, langStart)
             addStyle(hiddenFenceStyle, closeFenceStart, closeFenceEnd)
 
-            // Dim the language tag into a small caption instead of hiding it — it's useful context.
             if (language.isNotEmpty()) {
                 addStyle(
                     SpanStyle(
@@ -185,22 +190,21 @@ class MarkdownVisualTransformation(
                 )
             }
 
-            // The code body itself: monospace font with a highlighted background, same treatment
-            // as inline code but spanning every line of the block.
             if (contentEnd > contentStart) {
                 addStyle(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
+                        color = codeHighlightColors.textColor ?: Color.Unspecified,
                         background = effectiveCodeBg,
                         fontSize = scaledSp(13f)
                     ),
                     contentStart, contentEnd
                 )
-                // Layer keyword/string/number/comment colors on top based on the language tag.
                 applySyntaxHighlighting(content, language, contentStart, codeHighlightColors)
             }
         }
     }
+
 
 
     // ── Block-level (per line) ─────────────────────────────────────────────

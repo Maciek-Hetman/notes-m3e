@@ -9,16 +9,21 @@ import androidx.compose.ui.text.font.FontWeight
 /**
  * Colors used to paint syntax-highlighted tokens inside fenced code blocks.
  */
+/**
+ * Colors used to paint syntax-highlighted tokens inside fenced code blocks.
+ */
 data class CodeHighlightColors(
     val keyword: Color,
     val string: Color,
     val number: Color,
     val comment: Color,
-    val background: Color? = null
+    val background: Color? = null,
+    val textColor: Color? = null
 )
 
 fun resolveSyntaxThemeColors(
     theme: com.maciejhetman.notes.data.SyntaxTheme,
+    isDark: Boolean = false,
     fallbackPrimary: Color,
     fallbackSecondary: Color,
     fallbackTertiary: Color,
@@ -31,45 +36,74 @@ fun resolveSyntaxThemeColors(
             string = fallbackTertiary,
             number = fallbackSecondary,
             comment = fallbackOnSurface.copy(alpha = 0.45f),
-            background = fallbackSurfaceVariant
+            background = fallbackSurfaceVariant,
+            textColor = fallbackOnSurface
         )
         com.maciejhetman.notes.data.SyntaxTheme.MONOKAI -> CodeHighlightColors(
             keyword = Color(0xFFF92672),
             string = Color(0xFFA6E22E),
             number = Color(0xFFAE81FF),
             comment = Color(0xFF75715E),
-            background = Color(0xFF272822)
+            background = Color(0xFF272822),
+            textColor = Color(0xFFF8F8F2)
         )
         com.maciejhetman.notes.data.SyntaxTheme.DRACULA -> CodeHighlightColors(
             keyword = Color(0xFFFF79C6),
             string = Color(0xFFF1FA8C),
             number = Color(0xFFBD93F9),
             comment = Color(0xFF6272A4),
-            background = Color(0xFF282A36)
+            background = Color(0xFF282A36),
+            textColor = Color(0xFFF8F8F2)
         )
-        com.maciejhetman.notes.data.SyntaxTheme.SOLARIZED -> CodeHighlightColors(
-            keyword = Color(0xFF859900),
-            string = Color(0xFF2AA198),
-            number = Color(0xFFD33682),
-            comment = Color(0xFF93A1A1),
-            background = Color(0xFF073642)
-        )
-        com.maciejhetman.notes.data.SyntaxTheme.GITHUB -> CodeHighlightColors(
-            keyword = Color(0xFFCF222E),
-            string = Color(0xFF0A3069),
-            number = Color(0xFF0550AE),
-            comment = Color(0xFF6E7781),
-            background = Color(0xFFF6F8FA)
-        )
+        com.maciejhetman.notes.data.SyntaxTheme.SOLARIZED -> if (isDark) {
+            CodeHighlightColors(
+                keyword = Color(0xFF859900),
+                string = Color(0xFF2AA198),
+                number = Color(0xFFD33682),
+                comment = Color(0xFF586E75),
+                background = Color(0xFF002B36),
+                textColor = Color(0xFF839496)
+            )
+        } else {
+            CodeHighlightColors(
+                keyword = Color(0xFF859900),
+                string = Color(0xFF2AA198),
+                number = Color(0xFFD33682),
+                comment = Color(0xFF93A1A1),
+                background = Color(0xFFFDF6E3),
+                textColor = Color(0xFF657B83)
+            )
+        }
+        com.maciejhetman.notes.data.SyntaxTheme.GITHUB -> if (isDark) {
+            CodeHighlightColors(
+                keyword = Color(0xFFFF7B72),
+                string = Color(0xFFA5D6FF),
+                number = Color(0xFF79C0FF),
+                comment = Color(0xFF8B949E),
+                background = Color(0xFF161B22),
+                textColor = Color(0xFFC9D1D9)
+            )
+        } else {
+            CodeHighlightColors(
+                keyword = Color(0xFFCF222E),
+                string = Color(0xFF0A3069),
+                number = Color(0xFF0550AE),
+                comment = Color(0xFF6E7781),
+                background = Color(0xFFF6F8FA),
+                textColor = Color(0xFF24292F)
+            )
+        }
         com.maciejhetman.notes.data.SyntaxTheme.NORD -> CodeHighlightColors(
             keyword = Color(0xFF81A1C1),
             string = Color(0xFFA3BE8C),
             number = Color(0xFFB48EAD),
             comment = Color(0xFF616E88),
-            background = Color(0xFF2E3440)
+            background = Color(0xFF2E3440),
+            textColor = Color(0xFFD8DEE9)
         )
     }
 }
+
 
 
 private data class LanguageSyntax(

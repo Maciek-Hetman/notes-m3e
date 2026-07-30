@@ -70,7 +70,7 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val haptics = LocalHapticFeedback.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -199,8 +199,15 @@ private fun SettingsLivePreviewCard(settings: AppSettings) {
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val density = LocalDensity.current
 
+    val isDark = when (settings.themeMode) {
+        ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+
     val syntaxColors = resolveSyntaxThemeColors(
         theme = settings.syntaxTheme,
+        isDark = isDark,
         fallbackPrimary = primaryColor,
         fallbackSecondary = secondaryColor,
         fallbackTertiary = tertiaryColor,
@@ -208,7 +215,7 @@ private fun SettingsLivePreviewCard(settings: AppSettings) {
         fallbackSurfaceVariant = surfaceVariant
     )
 
-    val gutterWidthDp = (32f * settings.fontSizeScale).dp
+    val gutterWidthDp = (24f * settings.fontSizeScale).dp
     val gutterWidthSp = with(density) { gutterWidthDp.toSp() }
 
     val sampleMarkdown = "### Preview Note\n" +
@@ -220,7 +227,7 @@ private fun SettingsLivePreviewCard(settings: AppSettings) {
             "}\n" +
             "```"
 
-    val transformation = remember(settings, primaryColor, onSurfaceColor, surfaceVariant, gutterWidthSp) {
+    val transformation = remember(settings, primaryColor, onSurfaceColor, surfaceVariant, gutterWidthSp, isDark) {
         MarkdownVisualTransformation(
             primaryColor = primaryColor,
             onSurfaceColor = onSurfaceColor,
@@ -310,6 +317,8 @@ private fun SettingsSliderRow(
     valueLabel: String,
     onValueChange: (Float) -> Unit
 ) {
+    var sliderValue by remember(value) { mutableStateOf(value) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -333,13 +342,17 @@ private fun SettingsSliderRow(
         }
         Spacer(Modifier.height(4.dp))
         Slider(
-            value = value,
-            onValueChange = onValueChange,
+            value = sliderValue,
+            onValueChange = {
+                sliderValue = it
+                onValueChange(it)
+            },
             valueRange = valueRange,
             modifier = Modifier.fillMaxWidth()
         )
     }
 }
+
 
 @Composable
 private fun <T> SettingsMenuRow(
