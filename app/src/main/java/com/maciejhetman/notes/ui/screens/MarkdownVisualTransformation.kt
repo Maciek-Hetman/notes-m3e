@@ -27,7 +27,7 @@ import androidx.compose.ui.text.TextRange
 // Fenced code block: ```language\n ...body... \n```
 // The language tag is optional; body is captured as a single (possibly multi-line) group.
 // File-level so it can be shared with computeNumberedLines() below.
-private val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
+internal val FENCED_CODE_REGEX = Regex("(?m)^```([^\n]*)\n([\\s\\S]*?)\n```[ \t]*$")
 
 // All patterns below run once per keystroke (VisualTransformation.filter runs on every
 // recomposition of the editing text field), so they're compiled once here rather than
@@ -132,11 +132,13 @@ class MarkdownVisualTransformation(
     }
 
     private fun AnnotatedString.Builder.applyLineNumberIndent(text: String) {
-        if (lineNumberMode == LineNumberMode.OFF || gutterWidth.value <= 0f || text.isEmpty()) return
+        if (text.isEmpty()) return
+        val innerPaddingSp = scaledSp(10f)
+        val gutterWithInnerIndent = (gutterWidth.value + innerPaddingSp.value).sp
         when (lineNumberMode) {
             LineNumberMode.ALL_LINES -> {
                 addStyle(
-                    ParagraphStyle(textIndent = TextIndent(gutterWidth, gutterWidth)),
+                    ParagraphStyle(textIndent = TextIndent(gutterWithInnerIndent, gutterWithInnerIndent)),
                     0, text.length
                 )
             }
@@ -148,13 +150,26 @@ class MarkdownVisualTransformation(
                     val contentEnd = (contentStart + content.length).coerceAtMost(text.length)
                     if (contentEnd > contentStart) {
                         addStyle(
-                            ParagraphStyle(textIndent = TextIndent(gutterWidth, gutterWidth)),
+                            ParagraphStyle(textIndent = TextIndent(gutterWithInnerIndent, gutterWithInnerIndent)),
                             contentStart, contentEnd
                         )
                     }
                 }
             }
-            LineNumberMode.OFF -> {}
+            LineNumberMode.OFF -> {
+                FENCED_CODE_REGEX.findAll(text).forEach { match ->
+                    val language = match.groupValues[1]
+                    val content = match.groupValues[2]
+                    val contentStart = match.range.first + 3 + language.length + 1
+                    val contentEnd = (contentStart + content.length).coerceAtMost(text.length)
+                    if (contentEnd > contentStart) {
+                        addStyle(
+                            ParagraphStyle(textIndent = TextIndent(innerPaddingSp, innerPaddingSp)),
+                            contentStart, contentEnd
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -162,6 +177,7 @@ class MarkdownVisualTransformation(
 
     private fun AnnotatedString.Builder.applyFencedCodeBlocks(fencedMatches: List<MatchResult>) {
         val hiddenFenceStyle = SpanStyle(color = Color.Transparent, fontSize = 0.sp)
+        val innerPaddingSp = scaledSp(10f)
 
         for (match in fencedMatches) {
             val language = match.groupValues[1]
@@ -176,15 +192,21 @@ class MarkdownVisualTransformation(
             val closeFenceEnd = closeFenceStart + 3
 
             addStyle(hiddenFenceStyle, openFenceStart, langStart)
-            addStyle(hiddenFenceStyle, closeFenceStart, closeFenceEnd)
+            // Hide the newline before ``` AND the ``` backticks themselves so the closing line collapses
+            addStyle(hiddenFenceStyle, contentEnd, closeFenceEnd.coerceAtMost(length))
 
             if (language.isNotEmpty()) {
                 addStyle(
+                    ParagraphStyle(textIndent = TextIndent(innerPaddingSp, innerPaddingSp)),
+                    openFenceStart, (langEnd + 1).coerceAtMost(length)
+                )
+                addStyle(
                     SpanStyle(
-                        color = onSurfaceColor.copy(alpha = 0.4f),
+                        color = onSurfaceColor.copy(alpha = 0.45f),
                         fontFamily = FontFamily.Monospace,
                         fontSize = scaledSp(12f),
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.5.sp
                     ),
                     langStart, langEnd
                 )
@@ -195,7 +217,6 @@ class MarkdownVisualTransformation(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
                         color = codeHighlightColors.textColor ?: Color.Unspecified,
-                        background = effectiveCodeBg,
                         fontSize = scaledSp(13f)
                     ),
                     contentStart, contentEnd

@@ -207,7 +207,7 @@ fun NoteDetailScreen(
 
     // Width reserved for line-number digits; kept in both Dp (for the overlay Text below) and
     // Sp (for the transformation's paragraph indent) so the two line up pixel-for-pixel.
-    val gutterWidthDp = (24f * fontScale).dp
+    val gutterWidthDp = (36f * fontScale).dp
     val gutterWidthSp = with(density) { gutterWidthDp.toSp() }
 
     // Real rendered width of the content field — used so the reserved height for inline
@@ -420,7 +420,7 @@ fun NoteDetailScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            start = if (appSettings.lineNumberMode != LineNumberMode.OFF) 10.dp else 20.dp,
+                            start = if (appSettings.lineNumberMode != LineNumberMode.OFF) 12.dp else 20.dp,
                             end = 20.dp,
                             top = 8.dp,
                             bottom = 8.dp
@@ -481,6 +481,46 @@ fun NoteDetailScreen(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorationBox = { innerTextField ->
                         Box(modifier = Modifier.onGloballyPositioned { containerWidthPx = it.size.width }) {
+                            // Render whole code block background containers behind the text
+                            textLayoutResult?.let { layoutResult ->
+                                if (contentFieldValue.text.isNotEmpty() && layoutResult.layoutInput.text.length == contentFieldValue.text.length) {
+                                    val fencedMatches = FENCED_CODE_REGEX.findAll(contentFieldValue.text)
+                                    val codeBgColor = syntaxColors.background ?: surfaceVariant
+                                    for (match in fencedMatches) {
+                                        val language = match.groupValues[1]
+                                        val content = match.groupValues[2]
+                                        val startOffset = match.range.first.coerceIn(0, contentFieldValue.text.length - 1)
+                                        if (startOffset >= layoutResult.layoutInput.text.length) continue
+
+                                        val contentStart = match.range.first + 3 + language.length + 1
+                                        val contentEnd = contentStart + content.length
+                                        val lastContentOffset = (contentEnd - 1).coerceIn(startOffset, contentFieldValue.text.length - 1)
+
+                                        val firstLine = layoutResult.getLineForOffset(startOffset)
+                                        val lastLine = layoutResult.getLineForOffset(lastContentOffset)
+                                        val topPx = layoutResult.getLineTop(firstLine)
+                                        val bottomPx = layoutResult.getLineBottom(lastLine)
+                                        val topPaddingPx = with(density) { 4.dp.toPx() }
+                                        val bottomPaddingPx = with(density) { 8.dp.toPx() }
+
+                                        val startY = (topPx - topPaddingPx).coerceAtLeast(0f)
+                                        val endY = bottomPx + bottomPaddingPx
+                                        val blockHeightDp = with(density) { (endY - startY).toDp() }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .offset { IntOffset(0, startY.toInt()) }
+                                                .fillMaxWidth()
+                                                .height(blockHeightDp)
+                                                .background(
+                                                    color = codeBgColor,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+
                             if (contentFieldValue.text.isEmpty()) {
                                 Text(
                                     "Start writing…",
@@ -522,7 +562,7 @@ fun NoteDetailScreen(
                                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
                                                     fontSize = (MaterialTheme.typography.labelSmall.fontSize.value * fontScale).sp
                                                 ),
-                                                modifier = Modifier.padding(start = 2.dp)
+                                                modifier = Modifier.padding(start = 10.dp)
                                             )
                                         }
                                     }

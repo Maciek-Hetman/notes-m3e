@@ -43,12 +43,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.AppSettings
@@ -215,7 +218,7 @@ private fun SettingsLivePreviewCard(settings: AppSettings) {
         fallbackSurfaceVariant = surfaceVariant
     )
 
-    val gutterWidthDp = (24f * settings.fontSizeScale).dp
+    val gutterWidthDp = (36f * settings.fontSizeScale).dp
     val gutterWidthSp = with(density) { gutterWidthDp.toSp() }
 
     val sampleMarkdown = "### Preview Note\n" +
@@ -254,13 +257,87 @@ private fun SettingsLivePreviewCard(settings: AppSettings) {
             modifier = Modifier.padding(16.dp)
         ) {
             val transformedText = transformation.filter(androidx.compose.ui.text.AnnotatedString(sampleMarkdown)).text
-            Text(
-                text = transformedText,
-                fontFamily = settings.fontFamily.toComposeFontFamily(),
-                fontSize = (15 * settings.fontSizeScale).sp,
-                lineHeight = (15 * settings.fontSizeScale * settings.lineSpacing.multiplier).sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+            Box {
+                textLayoutResult?.let { layoutResult ->
+                    if (layoutResult.layoutInput.text.length == sampleMarkdown.length) {
+                        val fencedMatches = FENCED_CODE_REGEX.findAll(sampleMarkdown)
+                        val codeBgColor = syntaxColors.background ?: surfaceVariant
+                        for (match in fencedMatches) {
+                            val language = match.groupValues[1]
+                            val content = match.groupValues[2]
+                            val startOffset = match.range.first.coerceIn(0, sampleMarkdown.length - 1)
+                            val contentStart = match.range.first + 3 + language.length + 1
+                            val contentEnd = contentStart + content.length
+                            val lastContentOffset = (contentEnd - 1).coerceIn(startOffset, sampleMarkdown.length - 1)
+
+                            val firstLine = layoutResult.getLineForOffset(startOffset)
+                            val lastLine = layoutResult.getLineForOffset(lastContentOffset)
+                            val topPx = layoutResult.getLineTop(firstLine)
+                            val bottomPx = layoutResult.getLineBottom(lastLine)
+                            val topPaddingPx = with(density) { 4.dp.toPx() }
+                            val bottomPaddingPx = with(density) { 8.dp.toPx() }
+
+                            val startY = (topPx - topPaddingPx).coerceAtLeast(0f)
+                            val endY = bottomPx + bottomPaddingPx
+                            val blockHeightDp = with(density) { (endY - startY).toDp() }
+
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(0, startY.toInt()) }
+                                    .fillMaxWidth()
+                                    .height(blockHeightDp)
+                                    .background(
+                                        color = codeBgColor,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = transformedText,
+                    onTextLayout = { textLayoutResult = it },
+                    fontFamily = settings.fontFamily.toComposeFontFamily(),
+                    fontSize = (15 * settings.fontSizeScale).sp,
+                    lineHeight = (15 * settings.fontSizeScale * settings.lineSpacing.multiplier).sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                if (settings.lineNumberMode != LineNumberMode.OFF) {
+                    textLayoutResult?.let { layoutResult ->
+                        if (layoutResult.layoutInput.text.length == sampleMarkdown.length) {
+                            val numberedLines = computeNumberedLines(sampleMarkdown, settings.lineNumberMode)
+                            for (numbered in numberedLines) {
+                                val safeOffset = numbered.startOffset.coerceIn(0, (sampleMarkdown.length - 1).coerceAtLeast(0))
+                                val lineIndex = layoutResult.getLineForOffset(safeOffset)
+                                val lineTop = layoutResult.getLineTop(lineIndex)
+                                val lineBottom = layoutResult.getLineBottom(lineIndex)
+                                val lineHeightDp = with(density) { (lineBottom - lineTop).toDp() }
+                                Box(
+                                    modifier = Modifier
+                                        .offset { IntOffset(0, lineTop.toInt()) }
+                                        .width(gutterWidthDp)
+                                        .height(lineHeightDp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Text(
+                                        text = numbered.number.toString(),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                                            fontSize = (12 * settings.fontSizeScale).sp
+                                        ),
+                                        modifier = Modifier.padding(start = 10.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
