@@ -102,6 +102,13 @@ private fun getCustomColorScheme(isDark: Boolean, themeColor: AppThemeColor): Co
     }
 }
 
+@Composable
+fun isAppDarkTheme(themeMode: ThemeMode): Boolean = when (themeMode) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NotesTheme(

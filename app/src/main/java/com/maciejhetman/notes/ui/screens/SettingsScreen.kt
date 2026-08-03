@@ -46,7 +46,16 @@ import com.maciejhetman.notes.data.ThemeMode
 import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
 import kotlin.math.roundToInt
-import com.maciejhetman.notes.ui.components.*
+import com.maciejhetman.notes.ui.components.SettingsCard
+import com.maciejhetman.notes.ui.components.SettingsClickableRow
+import com.maciejhetman.notes.ui.components.SettingsDivider
+import com.maciejhetman.notes.ui.components.SettingsLivePreviewCard
+import com.maciejhetman.notes.ui.components.SettingsMenuRow
+import com.maciejhetman.notes.ui.components.SettingsSectionHeader
+import com.maciejhetman.notes.ui.components.SettingsSliderRow
+import com.maciejhetman.notes.ui.components.SettingsSwitchRow
+import com.maciejhetman.notes.ui.components.lineNumberModeLabel
+import com.maciejhetman.notes.ui.components.themeModeLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

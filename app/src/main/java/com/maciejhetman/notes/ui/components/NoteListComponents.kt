@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.ui.screens.buildNotePreview
 import com.maciejhetman.notes.ui.theme.LocalAppSettings
+import com.maciejhetman.notes.ui.theme.toComposeFontFamily
+import com.maciejhetman.notes.ui.util.IMAGE_MARKDOWN_REGEX
 import com.maciejhetman.notes.ui.util.gestureThresholdActivate
 import com.maciejhetman.notes.ui.util.longPress
 import com.maciejhetman.notes.ui.util.tap
@@ -70,8 +72,6 @@ const val END_OF_DAY_OFFSET_MS = 24 * 60 * 60 * 1000L - 1L
 val monthDayFormatter: DateTimeFormatter
     get() = DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
-
-val NOTE_PREVIEW_IMAGE_REGEX = Regex("!\\[.*?\\]\\((.*?)\\)")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -220,7 +220,7 @@ fun NoteItem(
 ) {
     val haptics = LocalHapticFeedback.current
     val firstImagePath = remember(note.content) {
-        NOTE_PREVIEW_IMAGE_REGEX.find(note.content)?.groupValues?.getOrNull(1)
+        IMAGE_MARKDOWN_REGEX.find(note.content)?.groupValues?.getOrNull(1)
     }
     var menuExpanded by remember { mutableStateOf(false) }
 
