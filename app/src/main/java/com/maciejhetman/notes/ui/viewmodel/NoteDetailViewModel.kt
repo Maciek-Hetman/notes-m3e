@@ -1,5 +1,6 @@
 package com.maciejhetman.notes.ui.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maciejhetman.notes.data.Note
@@ -58,8 +59,9 @@ class NoteDetailViewModel(
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
             delay(1500.milliseconds)
-            performSave()
-            _uiState.update { it.copy(savedState = SavedState.Saved) }
+            if (performSave()) {
+                _uiState.update { it.copy(savedState = SavedState.Saved) }
+            }
         }
     }
 
@@ -69,15 +71,16 @@ class NoteDetailViewModel(
         // entirely so simply navigating into a note never bumps its modified timestamp.
         if (_uiState.value.savedState != SavedState.Unsaved) return
         viewModelScope.launch {
-            performSave()
-            _uiState.update { it.copy(savedState = SavedState.Saved) }
+            if (performSave()) {
+                _uiState.update { it.copy(savedState = SavedState.Saved) }
+            }
         }
     }
 
-    private suspend fun performSave() {
+    private suspend fun performSave(): Boolean {
         val state = _uiState.value
         // Don't save truly empty new notes
-        if (state.isNew && state.title.isBlank() && state.content.isBlank()) return
+        if (state.isNew && state.title.isBlank() && state.content.isBlank()) return false
 
         val note = Note(
             id = state.id ?: 0,
@@ -86,12 +89,22 @@ class NoteDetailViewModel(
             createdAt = state.createdAt,
             modifiedAt = System.currentTimeMillis()
         )
-        if (state.isNew) {
-            val newId = repository.insertNote(note)
-            _uiState.update { it.copy(id = newId, isNew = false) }
-        } else {
-            repository.updateNote(note)
+        return try {
+            if (state.isNew) {
+                val newId = repository.insertNote(note)
+                _uiState.update { it.copy(id = newId, isNew = false) }
+            } else {
+                repository.updateNote(note)
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save note", e)
+            false
         }
+    }
+
+    companion object {
+        private const val TAG = "NoteDetailViewModel"
     }
 }
 
