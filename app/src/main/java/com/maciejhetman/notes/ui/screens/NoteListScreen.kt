@@ -62,7 +62,10 @@ import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
 import com.maciejhetman.notes.ui.viewmodel.SortOption
 import kotlinx.coroutines.launch
-import com.maciejhetman.notes.ui.components.*
+import com.maciejhetman.notes.ui.components.DateRangeFilterDialog
+import com.maciejhetman.notes.ui.components.EmptyNotesPlaceholder
+import com.maciejhetman.notes.ui.components.SwipeableNoteItem
+import com.maciejhetman.notes.ui.components.formatDateRange
 
 // SearchBar/InputField(query, expanded, onExpandedChange, ...) are deprecated in favor of the
 // SearchBarState + TextFieldState slot API, but this bar never expands into a full-screen/docked

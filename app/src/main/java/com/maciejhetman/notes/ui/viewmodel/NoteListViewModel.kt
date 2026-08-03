@@ -1,5 +1,6 @@
 package com.maciejhetman.notes.ui.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maciejhetman.notes.data.Note
@@ -67,14 +68,26 @@ class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
 
     fun deleteNote(note: Note) {
         viewModelScope.launch {
-            repository.deleteNote(note)
+            try {
+                repository.deleteNote(note)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete note", e)
+            }
         }
     }
 
     fun undoDelete(note: Note) {
         viewModelScope.launch {
-            repository.insertNote(note)
+            try {
+                repository.insertNote(note)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to undo delete", e)
+            }
         }
+    }
+
+    companion object {
+        private const val TAG = "NoteListViewModel"
     }
 }
 

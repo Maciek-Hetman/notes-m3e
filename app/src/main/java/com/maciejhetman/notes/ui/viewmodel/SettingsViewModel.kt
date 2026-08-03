@@ -1,5 +1,6 @@
 package com.maciejhetman.notes.ui.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maciejhetman.notes.data.AppSettings
@@ -25,43 +26,107 @@ class SettingsViewModel(
     )
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { repository.setThemeMode(mode) }
+        viewModelScope.launch {
+            try {
+                repository.setThemeMode(mode)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set theme mode", e)
+            }
+        }
     }
 
     fun setThemeColor(color: com.maciejhetman.notes.data.AppThemeColor) {
-        viewModelScope.launch { repository.setThemeColor(color) }
+        viewModelScope.launch {
+            try {
+                repository.setThemeColor(color)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set theme color", e)
+            }
+        }
     }
 
     fun setDynamicColor(enabled: Boolean) {
-        viewModelScope.launch { repository.setDynamicColor(enabled) }
+        viewModelScope.launch {
+            try {
+                repository.setDynamicColor(enabled)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set dynamic color", e)
+            }
+        }
     }
 
     fun setAmoledBlack(enabled: Boolean) {
-        viewModelScope.launch { repository.setAmoledBlack(enabled) }
+        viewModelScope.launch {
+            try {
+                repository.setAmoledBlack(enabled)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set amoled black", e)
+            }
+        }
     }
 
     fun setLineNumberMode(mode: LineNumberMode) {
-        viewModelScope.launch { repository.setLineNumberMode(mode) }
+        viewModelScope.launch {
+            try {
+                repository.setLineNumberMode(mode)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set line number mode", e)
+            }
+        }
     }
 
     fun setFontSizeScale(scale: Float) {
-        viewModelScope.launch { repository.setFontSizeScale(scale) }
+        viewModelScope.launch {
+            try {
+                repository.setFontSizeScale(scale)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set font size scale", e)
+            }
+        }
     }
 
     fun setFontFamily(family: NoteFontFamily) {
-        viewModelScope.launch { repository.setFontFamily(family) }
+        viewModelScope.launch {
+            try {
+                repository.setFontFamily(family)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set font family", e)
+            }
+        }
     }
 
     fun setSyntaxTheme(theme: SyntaxTheme) {
-        viewModelScope.launch { repository.setSyntaxTheme(theme) }
+        viewModelScope.launch {
+            try {
+                repository.setSyntaxTheme(theme)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set syntax theme", e)
+            }
+        }
     }
 
     fun setLineSpacing(spacing: EditorLineSpacing) {
-        viewModelScope.launch { repository.setLineSpacing(spacing) }
+        viewModelScope.launch {
+            try {
+                repository.setLineSpacing(spacing)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set line spacing", e)
+            }
+        }
     }
 
     fun setEnabledLanguages(languages: Set<String>) {
-        viewModelScope.launch { repository.setEnabledLanguages(languages) }
+        viewModelScope.launch {
+            try {
+                repository.setEnabledLanguages(languages)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set enabled languages", e)
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "SettingsViewModel"
     }
 }
 

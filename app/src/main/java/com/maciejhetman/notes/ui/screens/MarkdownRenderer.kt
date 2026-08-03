@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
+import com.maciejhetman.notes.ui.util.IMAGE_MARKDOWN_REGEX
 
 // ─── Inline styles (bold, italic, code) ─────────────────────────────────────
 
@@ -112,6 +113,8 @@ private val CHECKED_TODO_PREFIX_REGEX = Regex("^[-*]\\s+\\[[xX]\\]\\s+")
 private val UNCHECKED_TODO_PREFIX_REGEX = Regex("^[-*]\\s+\\[ \\]\\s+")
 private val UNORDERED_PREFIX_REGEX = Regex("^[-*]\\s+")
 private val HR_LINE_REGEX = Regex("^(-{3,}|\\*{3,}|_{3,})$")
+// Intentionally not the shared IMAGE_MARKDOWN_REGEX: anchored to match whole lines that
+// consist of a single image, so image-only lines can be skipped entirely in previews.
 private val PREVIEW_IMAGE_LINE_REGEX = Regex("^!\\[.*?\\]\\(.*?\\)$")
 
 /**
@@ -150,7 +153,7 @@ private fun stripBlockSyntaxForPreview(text: String): String {
                         trimmed.replaceFirst(HEADING_PREFIX_REGEX, "")
                     else -> trimmed
                 }.replace(LINK_REGEX, "$1") // Keep link text, drop the URL
-                  .replace(Regex("!\\[.*?\\]\\(.*?\\)"), "") // Strip inline images too
+                  .replace(IMAGE_MARKDOWN_REGEX, "") // Strip inline images too
 
                 if (result.isNotEmpty()) result.append('\n')
                 result.append(line)
