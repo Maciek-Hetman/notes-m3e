@@ -1,0 +1,151 @@
+package com.maciejhetman.notes
+
+import com.maciejhetman.notes.data.Note
+import com.maciejhetman.notes.fakes.FakeNoteRepository
+import com.maciejhetman.notes.testutil.MainDispatcherRule
+import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
+import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
+import com.maciejhetman.notes.ui.viewmodel.SortOption
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Rule
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class NoteListViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule(testDispatcher)
+
+    private fun note(
+        id: Long,
+        title: String = "note$id",
+        content: String = "",
+        createdAt: Long = 0L,
+        modifiedAt: Long = 0L
+    ) = Note(id = id, title = title, content = content, createdAt = createdAt, modifiedAt = modifiedAt)
+
+    @Test
+    fun `sort comparators order notes as expected`() {
+        val a = note(1, title = "apple", createdAt = 1, modifiedAt = 30)
+        val b = note(2, title = "Banana", createdAt = 3, modifiedAt = 10)
+        val c = note(3, title = "cherry", createdAt = 2, modifiedAt = 20)
+        val notes = listOf(c, a, b)
+
+        assertEquals(listOf(a, b, c), notes.sortedWith(SortOption.TITLE_ASC.comparator))
+        assertEquals(listOf(c, b, a), notes.sortedWith(SortOption.TITLE_DESC.comparator))
+        assertEquals(listOf(b, c, a), notes.sortedWith(SortOption.CREATED_NEWEST.comparator))
+        assertEquals(listOf(a, c, b), notes.sortedWith(SortOption.CREATED_OLDEST.comparator))
+        assertEquals(listOf(a, c, b), notes.sortedWith(SortOption.MODIFIED_NEWEST.comparator))
+        assertEquals(listOf(b, c, a), notes.sortedWith(SortOption.MODIFIED_OLDEST.comparator))
+    }
+
+    @Test
+    fun `changing sort option resorts the emitted notes`() = runTest(testDispatcher) {
+        val repository = FakeNoteRepository(
+            listOf(
+                note(1, title = "bbb", modifiedAt = 20),
+                note(2, title = "aaa", modifiedAt = 10)
+            )
+        )
+        val viewModel = NoteListViewModel(repository)
+        // notesUiState is stateIn(WhileSubscribed) — it only emits while collected.
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+
+        assertEquals(SortOption.MODIFIED_NEWEST, viewModel.notesUiState.value.sortOption)
+        assertEquals(listOf(1L, 2L), viewModel.notesUiState.value.notes.map { it.id })
+
+        viewModel.onSortOptionChange(SortOption.TITLE_ASC)
+        advanceUntilIdle()
+
+        assertEquals(SortOption.TITLE_ASC, viewModel.notesUiState.value.sortOption)
+        assertEquals(listOf(2L, 1L), viewModel.notesUiState.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `date range filter keeps only notes created inside the range`() = runTest(testDispatcher) {
+        val repository = FakeNoteRepository(
+            listOf(
+                note(1, createdAt = 100),
+                note(2, createdAt = 200),
+                note(3, createdAt = 300)
+            )
+        )
+        val viewModel = NoteListViewModel(repository)
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+        assertEquals(3, viewModel.notesUiState.value.notes.size)
+        assertNull(viewModel.notesUiState.value.dateRangeFilter)
+
+        viewModel.onDateRangeFilterChange(DateRangeFilter(startInclusive = 150, endInclusive = 300))
+        advanceUntilIdle()
+
+        assertEquals(setOf(2L, 3L), viewModel.notesUiState.value.notes.map { it.id }.toSet())
+        assertEquals(DateRangeFilter(150, 300), viewModel.notesUiState.value.dateRangeFilter)
+
+        viewModel.onClearDateRangeFilter()
+        advanceUntilIdle()
+
+        assertEquals(3, viewModel.notesUiState.value.notes.size)
+        assertNull(viewModel.notesUiState.value.dateRangeFilter)
+    }
+
+    @Test
+    fun `search delegates to repository searchNotes`() = runTest(testDispatcher) {
+        val repository = FakeNoteRepository(
+            listOf(
+                note(1, title = "buy milk"),
+                note(2, title = "call mom")
+            )
+        )
+        val viewModel = NoteListViewModel(repository)
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+
+        // Empty query streams all notes without touching searchNotes.
+        assertNull(repository.lastSearchQuery)
+        assertEquals(2, viewModel.notesUiState.value.notes.size)
+
+        viewModel.onSearchQueryChange("milk")
+        advanceUntilIdle()
+
+        assertEquals("milk", repository.lastSearchQuery)
+        assertEquals("milk", viewModel.searchQuery.value)
+        assertEquals(listOf(1L), viewModel.notesUiState.value.notes.map { it.id })
+
+        viewModel.onSearchQueryChange("")
+        advanceUntilIdle()
+        assertEquals(2, viewModel.notesUiState.value.notes.size)
+    }
+
+    @Test
+    fun `delete then undo re-inserts the note`() = runTest(testDispatcher) {
+        val victim = note(5, title = "doomed")
+        val repository = FakeNoteRepository(listOf(note(4, title = "safe"), victim))
+        val viewModel = NoteListViewModel(repository)
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+        assertEquals(2, viewModel.notesUiState.value.notes.size)
+
+        viewModel.deleteNote(victim)
+        advanceUntilIdle()
+
+        assertEquals(listOf(victim), repository.deletedNotes)
+        assertEquals(listOf(4L), viewModel.notesUiState.value.notes.map { it.id })
+
+        viewModel.undoDelete(victim)
+        advanceUntilIdle()
+
+        assertEquals(1, repository.insertedNotes.size)
+        assertEquals(victim, repository.insertedNotes.single())
+        assertEquals(setOf(4L, 5L), viewModel.notesUiState.value.notes.map { it.id }.toSet())
+    }
+}
