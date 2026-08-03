@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.LineNumberMode
+import com.maciejhetman.notes.ui.util.IMAGE_MARKDOWN_REGEX
 import androidx.compose.ui.text.TextRange
 
 /**
@@ -41,7 +42,6 @@ private val BOLD_REGEX = Regex("\\*\\*([^*\n]+?)\\*\\*")
 private val ITALIC_STAR_REGEX = Regex("(?<![*])\\*([^*\n]+?)\\*(?![*])")
 private val ITALIC_UNDERSCORE_REGEX = Regex("_([^_\n]+?)_")
 private val UNDERLINE_REGEX = Regex("<u>(.*?)</u>")
-private val IMAGE_REGEX = Regex("!\\[.*?\\]\\((.*?)\\)")
 
 /** A single logical line eligible for a rendered line-number gutter entry. */
 data class NumberedLine(val startOffset: Int, val endOffsetExclusive: Int, val number: Int)
@@ -389,7 +389,7 @@ class MarkdownVisualTransformation(
         }
 
         // Markdown Images ![alt](uri)
-        IMAGE_REGEX.findAll(text).forEach { match ->
+        IMAGE_MARKDOWN_REGEX.findAll(text).forEach { match ->
             if (!match.range.isInsideCode()) {
                 val isCursorInside = selection.start in match.range.first..(match.range.last + 1)
                 if (isCursorInside) {

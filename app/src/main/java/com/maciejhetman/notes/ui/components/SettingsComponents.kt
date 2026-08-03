@@ -53,6 +53,8 @@ import com.maciejhetman.notes.ui.screens.FENCED_CODE_REGEX
 import com.maciejhetman.notes.ui.screens.MarkdownVisualTransformation
 import com.maciejhetman.notes.ui.screens.computeNumberedLines
 import com.maciejhetman.notes.ui.screens.resolveSyntaxThemeColors
+import com.maciejhetman.notes.ui.theme.isAppDarkTheme
+import com.maciejhetman.notes.ui.theme.toComposeFontFamily
 import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.util.toggle
 
@@ -65,11 +67,7 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val density = LocalDensity.current
 
-    val isDark = when (settings.themeMode) {
-        ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
+    val isDark = isAppDarkTheme(settings.themeMode)
 
     val syntaxColors = resolveSyntaxThemeColors(
         theme = settings.syntaxTheme,

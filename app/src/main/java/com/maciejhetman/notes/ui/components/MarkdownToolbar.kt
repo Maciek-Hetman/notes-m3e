@@ -214,21 +214,3 @@ fun ToolbarDivider(modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.outlineVariant
     )
 }
-
-fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri): String? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-        val fileName = "img_${System.currentTimeMillis()}.jpg"
-        val file = java.io.File(context.filesDir, fileName)
-        val outputStream = java.io.FileOutputStream(file)
-        inputStream.use { input ->
-            outputStream.use { output ->
-                input.copyTo(output)
-            }
-        }
-        file.absolutePath
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
-    }
-}

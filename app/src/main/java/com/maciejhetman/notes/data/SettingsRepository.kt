@@ -1,7 +1,6 @@
 package com.maciejhetman.notes.data
 
 import android.content.Context
-import androidx.compose.ui.text.font.FontFamily
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -20,15 +19,7 @@ enum class NoteFontFamily(val label: String) {
     SANS_SERIF("Google Sans / Sans Serif"),
     SERIF("Serif"),
     MONOSPACE("Monospace"),
-    CURSIVE("Cursive / Handwriting");
-
-    fun toComposeFontFamily(): FontFamily = when (this) {
-        SYSTEM -> FontFamily.Default
-        SANS_SERIF -> FontFamily.SansSerif
-        SERIF -> FontFamily.Serif
-        MONOSPACE -> FontFamily.Monospace
-        CURSIVE -> FontFamily.Cursive
-    }
+    CURSIVE("Cursive / Handwriting")
 }
 
 enum class SyntaxTheme(val label: String) {
