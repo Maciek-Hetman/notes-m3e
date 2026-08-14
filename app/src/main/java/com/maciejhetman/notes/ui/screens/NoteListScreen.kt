@@ -36,7 +36,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -286,36 +286,36 @@ fun NoteListScreen(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(bottom = 16.dp)
                     ) {
-                        SmallFloatingActionButton(
+                        ExtendedFloatingActionButton(
                             onClick = { 
                                 isFabExpanded = false
                                 Toast.makeText(context, "To-Do lists coming soon!", Toast.LENGTH_SHORT).show()
                             },
+                            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = null) },
+                            text = { Text("To-Do list") },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Icon(Icons.Default.FormatListBulleted, contentDescription = "Create To-Do list")
-                        }
-                        SmallFloatingActionButton(
+                        )
+                        ExtendedFloatingActionButton(
                             onClick = { 
                                 isFabExpanded = false
                                 showCreateFolderDialog = true 
                             },
+                            icon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
+                            text = { Text("Folder") },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Folder")
-                        }
-                        SmallFloatingActionButton(
+                        )
+                        ExtendedFloatingActionButton(
                             onClick = {
                                 isFabExpanded = false
                                 onAddNoteClick()
                             },
+                            icon = { Icon(Icons.Default.NoteAdd, contentDescription = null) },
+                            text = { Text("Note") },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Icon(Icons.Default.NoteAdd, contentDescription = "Create Note")
-                        }
+                        )
                     }
                 }
                 FloatingActionButton(
