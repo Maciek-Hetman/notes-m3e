@@ -3,6 +3,8 @@ package com.maciejhetman.notes.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.maciejhetman.notes.data.Folder
+import com.maciejhetman.notes.data.FolderRepository
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.data.NoteRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,7 +18,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
+class NoteListViewModel(
+    private val repository: NoteRepository,
+    private val folderRepository: FolderRepository,
+    private val folderId: Long? = null
+) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -28,18 +34,26 @@ class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
     val notesUiState: StateFlow<NoteListUiState> = combine(
         _searchQuery.flatMapLatest { query ->
             if (query.isEmpty()) {
-                repository.getAllNotesStream()
+                repository.getNotesStreamByFolderId(folderId)
             } else {
                 repository.searchNotes(query)
             }
         },
+        _searchQuery.flatMapLatest { query ->
+            if (query.isEmpty()) {
+                folderRepository.getSubfoldersStream(folderId)
+            } else {
+                kotlinx.coroutines.flow.flowOf(emptyList())
+            }
+        },
         _sortOption,
         _dateRangeFilter
-    ) { notes, sortOption, dateFilter ->
+    ) { notes, folders, sortOption, dateFilter ->
         val filtered = dateFilter?.let { filter ->
             notes.filter { it.createdAt in filter.startInclusive..filter.endInclusive }
         } ?: notes
         NoteListUiState(
+            folders = folders,
             notes = filtered.sortedWith(sortOption.comparator),
             sortOption = sortOption,
             dateRangeFilter = dateFilter
@@ -86,6 +100,26 @@ class NoteListViewModel(private val repository: NoteRepository) : ViewModel() {
         }
     }
 
+    fun createFolder(name: String) {
+        viewModelScope.launch {
+            try {
+                folderRepository.insertFolder(Folder(name = name, parentFolderId = folderId))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create folder", e)
+            }
+        }
+    }
+
+    fun deleteFolder(folder: Folder) {
+        viewModelScope.launch {
+            try {
+                folderRepository.deleteFolder(folder)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete folder", e)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "NoteListViewModel"
     }
@@ -106,6 +140,7 @@ data class DateRangeFilter(
 )
 
 data class NoteListUiState(
+    val folders: List<Folder> = emptyList(),
     val notes: List<Note> = emptyList(),
     val sortOption: SortOption = SortOption.MODIFIED_NEWEST,
     val dateRangeFilter: DateRangeFilter? = null

@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 class OfflineNoteRepository(private val noteDao: NoteDao) : NoteRepository {
     override fun getAllNotesStream(): Flow<List<Note>> = noteDao.getAllNotes()
 
+    override fun getNotesStreamByFolderId(folderId: Long?): Flow<List<Note>> = noteDao.getNotesByFolderId(folderId)
+
     override fun getNoteStream(id: Long): Flow<Note?> = noteDao.getNoteById(id)
 
     override suspend fun insertNote(note: Note): Long = noteDao.insertNote(note)

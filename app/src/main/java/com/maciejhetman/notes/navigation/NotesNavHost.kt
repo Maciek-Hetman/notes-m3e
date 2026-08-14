@@ -49,6 +49,7 @@ fun NotesNavHost() {
     val context = LocalContext.current
     val application = context.applicationContext as NotesApplication
     val repository = application.repository
+    val folderRepository = application.folderRepository
     val settingsRepository = application.settingsRepository
 
     SharedTransitionLayout {
@@ -57,25 +58,29 @@ fun NotesNavHost() {
         ) {
             NavHost(
                 navController = navController,
-                startDestination = Routes.NoteList
+                startDestination = Routes.NoteList()
             ) {
                 composable<Routes.NoteList>(
                     enterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS)) },
                     exitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS)) },
                     popEnterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS)) },
                     popExitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS)) },
-                ) {
+                ) { backStackEntry ->
                     CompositionLocalProvider(
                         LocalNavAnimatedVisibilityScope provides this@composable,
                     ) {
+                        val route = backStackEntry.toRoute<Routes.NoteList>()
                         val viewModel: NoteListViewModel = viewModel(
-                            factory = viewModelFactory { NoteListViewModel(repository) }
+                            key = "notelist_${route.folderId}",
+                            factory = viewModelFactory { NoteListViewModel(repository, folderRepository, route.folderId) }
                         )
                         NoteListScreen(
                             viewModel = viewModel,
-                            onNoteClick = { noteId -> navController.navigate(Routes.NoteDetail(noteId)) },
-                            onAddNoteClick = { navController.navigate(Routes.NoteDetail(null)) },
-                            onSettingsClick = { navController.navigate(Routes.Settings) }
+                            onNoteClick = { noteId -> navController.navigate(Routes.NoteDetail(noteId, route.folderId)) },
+                            onAddNoteClick = { navController.navigate(Routes.NoteDetail(null, route.folderId)) },
+                            onFolderClick = { folderId -> navController.navigate(Routes.NoteList(folderId)) },
+                            onSettingsClick = { navController.navigate(Routes.Settings) },
+                            onBack = { if (route.folderId != null) navController.popBackStack() }
                         )
                     }
                 }
@@ -92,7 +97,7 @@ fun NotesNavHost() {
                         val route = backStackEntry.toRoute<Routes.NoteDetail>()
                         val viewModel: NoteDetailViewModel = viewModel(
                             key = "note_${route.noteId}",
-                            factory = viewModelFactory { NoteDetailViewModel(repository, route.noteId) }
+                            factory = viewModelFactory { NoteDetailViewModel(repository, route.noteId, route.folderId) }
                         )
                         NoteDetailScreen(
                             viewModel = viewModel,

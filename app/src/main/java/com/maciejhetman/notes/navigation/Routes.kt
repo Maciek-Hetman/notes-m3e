@@ -7,10 +7,10 @@ import kotlinx.serialization.Serializable
  */
 object Routes {
     @Serializable
-    data object NoteList
+    data class NoteList(val folderId: Long? = null)
 
     @Serializable
-    data class NoteDetail(val noteId: Long? = null)
+    data class NoteDetail(val noteId: Long? = null, val folderId: Long? = null)
 
     @Serializable
     data object Settings

@@ -2,6 +2,7 @@ package com.maciejhetman.notes
 
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.fakes.FakeNoteRepository
+import com.maciejhetman.notes.fakes.FakeFolderRepository
 import com.maciejhetman.notes.testutil.MainDispatcherRule
 import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
@@ -55,7 +56,7 @@ class NoteListViewModelTest {
                 note(2, title = "aaa", modifiedAt = 10)
             )
         )
-        val viewModel = NoteListViewModel(repository)
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
         // notesUiState is stateIn(WhileSubscribed) — it only emits while collected.
         backgroundScope.launch { viewModel.notesUiState.collect { } }
         advanceUntilIdle()
@@ -79,7 +80,7 @@ class NoteListViewModelTest {
                 note(3, createdAt = 300)
             )
         )
-        val viewModel = NoteListViewModel(repository)
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
         backgroundScope.launch { viewModel.notesUiState.collect { } }
         advanceUntilIdle()
         assertEquals(3, viewModel.notesUiState.value.notes.size)
@@ -106,7 +107,7 @@ class NoteListViewModelTest {
                 note(2, title = "call mom")
             )
         )
-        val viewModel = NoteListViewModel(repository)
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
         backgroundScope.launch { viewModel.notesUiState.collect { } }
         advanceUntilIdle()
 
@@ -130,7 +131,7 @@ class NoteListViewModelTest {
     fun `delete then undo re-inserts the note`() = runTest(testDispatcher) {
         val victim = note(5, title = "doomed")
         val repository = FakeNoteRepository(listOf(note(4, title = "safe"), victim))
-        val viewModel = NoteListViewModel(repository)
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
         backgroundScope.launch { viewModel.notesUiState.collect { } }
         advanceUntilIdle()
         assertEquals(2, viewModel.notesUiState.value.notes.size)

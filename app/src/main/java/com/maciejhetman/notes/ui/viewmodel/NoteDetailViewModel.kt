@@ -14,17 +14,21 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration.Companion.milliseconds
 
 class NoteDetailViewModel(
     private val repository: NoteRepository,
-    private val noteId: Long?
+    private val noteId: Long?,
+    private val folderId: Long? = null
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(NoteDetailUiState(id = noteId, isNew = noteId == null))
+    private val _uiState = MutableStateFlow(NoteDetailUiState(id = noteId, folderId = folderId, isNew = noteId == null))
     val uiState: StateFlow<NoteDetailUiState> = _uiState.asStateFlow()
 
     private var autoSaveJob: Job? = null
+    private val saveMutex = Mutex()
 
     init {
         if (noteId != null) {
@@ -33,6 +37,7 @@ class NoteDetailViewModel(
                 _uiState.update {
                     it.copy(
                         id = note.id,
+                        folderId = note.folderId,
                         title = note.title,
                         content = note.content,
                         createdAt = note.createdAt,
@@ -77,13 +82,14 @@ class NoteDetailViewModel(
         }
     }
 
-    private suspend fun performSave(): Boolean {
+    private suspend fun performSave(): Boolean = saveMutex.withLock {
         val state = _uiState.value
         // Don't save truly empty new notes
         if (state.isNew && state.title.isBlank() && state.content.isBlank()) return false
 
         val note = Note(
             id = state.id ?: 0,
+            folderId = state.folderId,
             title = state.title,
             content = state.content,
             createdAt = state.createdAt,
@@ -112,6 +118,7 @@ enum class SavedState { Saved, Unsaved, Idle }
 
 data class NoteDetailUiState(
     val id: Long? = null,
+    val folderId: Long? = null,
     val title: String = "",
     val content: String = "",
     val createdAt: Long = System.currentTimeMillis(),

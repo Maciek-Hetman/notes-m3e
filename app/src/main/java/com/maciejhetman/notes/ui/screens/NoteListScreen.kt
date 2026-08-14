@@ -18,9 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -30,7 +34,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,6 +47,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,10 +58,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.maciejhetman.notes.data.Folder
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.ui.util.confirm
 import com.maciejhetman.notes.ui.util.reject
@@ -64,6 +80,7 @@ import com.maciejhetman.notes.ui.viewmodel.SortOption
 import kotlinx.coroutines.launch
 import com.maciejhetman.notes.ui.components.DateRangeFilterDialog
 import com.maciejhetman.notes.ui.components.EmptyNotesPlaceholder
+import com.maciejhetman.notes.ui.components.FolderItem
 import com.maciejhetman.notes.ui.components.SwipeableNoteItem
 import com.maciejhetman.notes.ui.components.formatDateRange
 
@@ -77,7 +94,9 @@ fun NoteListScreen(
     viewModel: NoteListViewModel,
     onNoteClick: (Long) -> Unit,
     onAddNoteClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onFolderClick: (Long) -> Unit,
+    onSettingsClick: () -> Unit,
+    onBack: () -> Unit
 ) {
     val uiState by viewModel.notesUiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -85,8 +104,13 @@ fun NoteListScreen(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
+    var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var showDateRangePicker by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var isFabExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -108,11 +132,20 @@ fun NoteListScreen(
                                 )
                             },
                             leadingIcon = {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = onBack) {
+                                        Icon(
+                                            Icons.Default.ArrowBack,
+                                            contentDescription = "Back",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             },
                             trailingIcon = {
                                 // Crossfade between the two trailing actions so both always occupy
@@ -245,15 +278,53 @@ fun NoteListScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    haptics.tap()
-                    onAddNoteClick()
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Note", modifier = Modifier.size(24.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                AnimatedVisibility(
+                    visible = isFabExpanded,
+                    enter = fadeIn() + slideInVertically { it / 2 },
+                    exit = fadeOut() + slideOutVertically { it / 2 }
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    ) {
+                        SmallFloatingActionButton(
+                            onClick = { 
+                                isFabExpanded = false
+                                Toast.makeText(context, "To-Do lists coming soon!", Toast.LENGTH_SHORT).show()
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Icon(Icons.Default.FormatListBulleted, contentDescription = "Create To-Do list")
+                        }
+                        SmallFloatingActionButton(
+                            onClick = { 
+                                isFabExpanded = false
+                                showCreateFolderDialog = true 
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Folder")
+                        }
+                        SmallFloatingActionButton(
+                            onClick = {
+                                isFabExpanded = false
+                                onAddNoteClick()
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Icon(Icons.Default.NoteAdd, contentDescription = "Create Note")
+                        }
+                    }
+                }
+                FloatingActionButton(
+                    onClick = { isFabExpanded = !isFabExpanded },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                ) {
+                    Icon(if (isFabExpanded) Icons.Default.Close else Icons.Default.Add, contentDescription = "Add")
+                }
             }
         }
     ) { innerPadding ->
@@ -262,7 +333,7 @@ fun NoteListScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (uiState.notes.isEmpty()) {
+            if (uiState.notes.isEmpty() && uiState.folders.isEmpty()) {
                 // ── Empty state ──────────────────────────────────────────
                 EmptyNotesPlaceholder(
                     isSearching = searchQuery.isNotEmpty() || uiState.dateRangeFilter != null,
@@ -278,8 +349,19 @@ fun NoteListScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
+                        items = uiState.folders,
+                        key = { folder -> "folder_${folder.id}" }
+                    ) { folder ->
+                        FolderItem(
+                            folder = folder,
+                            onClick = { onFolderClick(folder.id) },
+                            onDeleteClick = { folderToDelete = folder },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
+                    items(
                         items = uiState.notes,
-                        key = { note -> note.id }
+                        key = { note -> "note_${note.id}" }
                     ) { note ->
                         SwipeableNoteItem(
                             note = note,
@@ -342,6 +424,73 @@ fun NoteListScreen(
                 haptics.confirm()
                 viewModel.onDateRangeFilterChange(filter)
                 showDateRangePicker = false
+            }
+        )
+    }
+    if (folderToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { folderToDelete = null },
+            title = { Text("Delete folder?") },
+            text = { Text("This folder and all notes inside it will be permanently deleted.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        haptics.reject()
+                        val folder = folderToDelete
+                        if (folder != null) {
+                            viewModel.deleteFolder(folder)
+                        }
+                        folderToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showCreateFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolderDialog = false },
+            title = { Text("Create Folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newFolderName.isNotBlank()) {
+                            viewModel.createFolder(newFolderName.trim())
+                        }
+                        showCreateFolderDialog = false
+                        newFolderName = ""
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCreateFolderDialog = false
+                        newFolderName = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }

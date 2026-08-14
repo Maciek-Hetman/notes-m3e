@@ -26,6 +26,9 @@ class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepositor
 
     override fun getAllNotesStream(): Flow<List<Note>> = notes
 
+    override fun getNotesStreamByFolderId(folderId: Long?): Flow<List<Note>> =
+        notes.map { list -> list.filter { it.folderId == folderId } }
+
     override fun getNoteStream(id: Long): Flow<Note?> =
         notes.map { list -> list.firstOrNull { it.id == id } }
 
