@@ -83,7 +83,10 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
     val gutterWidthSp = with(density) { gutterWidthDp.toSp() }
 
     val sampleMarkdown = "### Preview Note\n" +
-            "This is **bold**, *italic*, and `inline code` formatted using your font style.\n\n" +
+            "This is **bold**, *italic*, and `inline code` formatted using your font style.\n" +
+            "- Item one\n" +
+            "  - Nested item\n" +
+            "\n" +
             "```kotlin\n" +
             "fun main() {\n" +
             "    val greeting = \"Hello World!\"\n" +
@@ -202,6 +205,13 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
                         }
                     }
                 }
+
+                IndentGuideLines(
+                    layoutResult = textLayoutResult,
+                    text = sampleMarkdown,
+                    appSettings = settings,
+                    gutterWidthDp = gutterWidthDp
+                )
 
                 Text(
                     text = transformedText,

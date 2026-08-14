@@ -36,8 +36,11 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -52,9 +55,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.maciejhetman.notes.data.AppSettings
+import com.maciejhetman.notes.data.IndentGuideStyle
 import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.ui.screens.SUPPORTED_LANGUAGES
+import com.maciejhetman.notes.ui.screens.computeIndentGuides
 import com.maciejhetman.notes.ui.screens.computeNumberedLines
+import com.maciejhetman.notes.ui.screens.resolve
 import com.maciejhetman.notes.ui.util.tap
 
 /**
@@ -102,6 +108,83 @@ fun EditorCodeBlockBackgrounds(
                         )
                 )
             }
+        }
+    }
+}
+
+/**
+ * VSCode-style vertical indent guides. One thin line is drawn per indentation level at
+ * x = baseIndent + k * depth, where baseIndent matches the editor's existing line-number gutter
+ * and code-block padding. Guides are purely visual and do not move the underlying text, so the
+ * depth setting is a user-tunable grid the user can align with their actual whitespace.
+ * Drawn *behind* the text (before innerTextField).
+ */
+@Composable
+fun IndentGuideLines(
+    layoutResult: TextLayoutResult?,
+    text: String,
+    appSettings: AppSettings,
+    gutterWidthDp: Dp
+) {
+    if (layoutResult == null) return
+    if (text.isEmpty()) return
+    if (layoutResult.layoutInput.text.length != text.length) return
+
+    val guides = remember(text) { computeIndentGuides(text) }
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val density = LocalDensity.current
+    val fontScale = appSettings.fontSizeScale
+    val innerPaddingDp = with(density) { (10f * fontScale).sp.toDp() }
+
+    for (guide in guides) {
+        if (guide.level <= 0) continue
+        val style = if (guide.insideFence) appSettings.codeIndentStyle else appSettings.textIndentStyle
+        if (style == IndentGuideStyle.OFF) continue
+
+        val safeOffset = guide.startOffset.coerceIn(0, (text.length - 1).coerceAtLeast(0))
+        if (safeOffset >= layoutResult.layoutInput.text.length) continue
+        val lineIndex = layoutResult.getLineForOffset(safeOffset)
+        val lineTop = layoutResult.getLineTop(lineIndex)
+        val lineBottom = layoutResult.getLineBottom(lineIndex)
+        if (lineBottom <= lineTop) continue
+        val lineHeightDp = with(density) { (lineBottom - lineTop).toDp() }
+
+        val color = (if (guide.insideFence) appSettings.codeIndentColor else appSettings.textIndentColor)
+            .resolve(onSurfaceVariant)
+        // Use sp for the guide depth so it scales with the text indent (which the transformation
+        // applies in sp). The app fontScale is applied here, and the system font scale is applied
+        // by .sp.toPx() inside the DrawScope, keeping overlay and text pixel-aligned.
+        val depthSp = (if (guide.insideFence) appSettings.codeIndentDepthSp else appSettings.textIndentDepthSp) * fontScale
+        val baseDp = when {
+            appSettings.lineNumberMode == LineNumberMode.ALL_LINES -> gutterWidthDp + innerPaddingDp
+            guide.insideFence && appSettings.lineNumberMode == LineNumberMode.CODE_BLOCKS_ONLY -> gutterWidthDp + innerPaddingDp
+            guide.insideFence -> innerPaddingDp
+            else -> Dp(0f)
+        }
+        val pathEffect = when (style) {
+            IndentGuideStyle.SOLID -> null
+            IndentGuideStyle.DASHED -> PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
+            IndentGuideStyle.DOTTED -> PathEffect.dashPathEffect(floatArrayOf(2f, 6f))
+            IndentGuideStyle.OFF -> null
+        }
+
+        for (k in 1..guide.level) {
+            val xPx = with(density) { baseDp.toPx() + (depthSp * k).sp.toPx() }
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(xPx.toInt(), lineTop.toInt()) }
+                    .width(1.dp)
+                    .height(lineHeightDp)
+                    .drawBehind {
+                        drawLine(
+                            color = color,
+                            start = Offset(size.width / 2f, 0f),
+                            end = Offset(size.width / 2f, size.height),
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = pathEffect
+                        )
+                    }
+            )
         }
     }
 }

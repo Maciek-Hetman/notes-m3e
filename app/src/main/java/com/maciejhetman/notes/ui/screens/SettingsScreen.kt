@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.maciejhetman.notes.data.EditorLineSpacing
+import com.maciejhetman.notes.data.IndentGuideColor
+import com.maciejhetman.notes.data.IndentGuideStyle
 import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.data.NoteFontFamily
 import com.maciejhetman.notes.data.SyntaxTheme
@@ -200,6 +202,70 @@ fun SettingsScreen(
                     title = "Visible programming languages",
                     subtitle = countLabel,
                     onClick = { showLanguageDialog = true }
+                )
+            }
+
+            SettingsSectionHeader("Code Block Indent Guides")
+            SettingsCard {
+                SettingsMenuRow(
+                    title = "Style",
+                    options = IndentGuideStyle.entries,
+                    selected = settings.codeIndentStyle,
+                    labelFor = { it.label },
+                    onSelect = viewModel::setCodeIndentStyle
+                )
+
+                SettingsDivider()
+
+                SettingsMenuRow(
+                    title = "Color",
+                    options = IndentGuideColor.entries,
+                    selected = settings.codeIndentColor,
+                    labelFor = { it.label },
+                    onSelect = viewModel::setCodeIndentColor
+                )
+
+                SettingsDivider()
+
+                val codeDepthLabel = "${settings.codeIndentDepthSp.roundToInt()} sp per level"
+                SettingsSliderRow(
+                    title = "Depth",
+                    value = settings.codeIndentDepthSp,
+                    valueRange = 4f..40f,
+                    valueLabel = codeDepthLabel,
+                    onValueChange = viewModel::setCodeIndentDepthSp
+                )
+            }
+
+            SettingsSectionHeader("Text Indent Guides")
+            SettingsCard {
+                SettingsMenuRow(
+                    title = "Style",
+                    options = IndentGuideStyle.entries,
+                    selected = settings.textIndentStyle,
+                    labelFor = { it.label },
+                    onSelect = viewModel::setTextIndentStyle
+                )
+
+                SettingsDivider()
+
+                SettingsMenuRow(
+                    title = "Color",
+                    options = IndentGuideColor.entries,
+                    selected = settings.textIndentColor,
+                    labelFor = { it.label },
+                    onSelect = viewModel::setTextIndentColor
+                )
+
+                SettingsDivider()
+
+                val textDepthLabel = "${settings.textIndentDepthSp.roundToInt()} sp per level"
+                SettingsSliderRow(
+                    title = "Depth",
+                    value = settings.textIndentDepthSp,
+                    valueRange = 4f..40f,
+                    valueLabel = textDepthLabel,
+                    onValueChange = viewModel::setTextIndentDepthSp
                 )
             }
         }

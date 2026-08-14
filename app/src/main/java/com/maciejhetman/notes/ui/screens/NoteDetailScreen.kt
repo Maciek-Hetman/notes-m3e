@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -61,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.maciejhetman.notes.navigation.LocalNavAnimatedVisibilityScope
+import com.maciejhetman.notes.navigation.LocalSharedTransitionScope
 import com.maciejhetman.notes.ui.components.MarkdownToolbar
 import com.maciejhetman.notes.ui.components.NoteContentEditor
 import com.maciejhetman.notes.ui.components.buildInsertedValue
@@ -76,6 +80,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun NoteDetailScreen(
     viewModel: NoteDetailViewModel,
@@ -216,7 +221,47 @@ fun NoteDetailScreen(
 
     // ── UI ─────────────────────────────────────────────────────────────────
 
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+
+    val sharedElementModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${uiState.id}"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${uiState.id}_title"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    val dateSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${uiState.id}_date"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    val contentSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${uiState.id}_content"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
     Scaffold(
+        modifier = sharedElementModifier,
         floatingActionButton = {
             MarkdownToolbar(
                 onInsert = { syntax ->
@@ -277,7 +322,7 @@ fun NoteDetailScreen(
             BasicTextField(
                 value = uiState.title,
                 onValueChange = { viewModel.updateTitle(it) },
-                modifier = Modifier
+                modifier = titleSharedModifier
                     .fillMaxWidth()
                     .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
                 textStyle = MaterialTheme.typography.headlineLarge.copy(
@@ -313,7 +358,7 @@ fun NoteDetailScreen(
                 text = "Created $createdStr  •  Modified $modifiedStr",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                modifier = dateSharedModifier.padding(horizontal = 20.dp, vertical = 4.dp)
             )
 
             HorizontalDivider(
@@ -331,7 +376,8 @@ fun NoteDetailScreen(
                 fontFamily = fontFamily,
                 syntaxColors = syntaxColors,
                 fallbackCodeBackground = surfaceVariant,
-                gutterWidthDp = gutterWidthDp
+                gutterWidthDp = gutterWidthDp,
+                modifier = contentSharedModifier
             )
 
             // Tapping the empty area below the content moves cursor to the end

@@ -56,7 +56,8 @@ fun NoteContentEditor(
     fontFamily: FontFamily,
     syntaxColors: CodeHighlightColors,
     fallbackCodeBackground: Color,
-    gutterWidthDp: Dp
+    gutterWidthDp: Dp,
+    modifier: Modifier = Modifier
 ) {
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -94,7 +95,7 @@ fun NoteContentEditor(
             state.contentFieldValue = continued
             onContentChange(continued.text)
         },
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(
                 start = if (appSettings.lineNumberMode != LineNumberMode.OFF) 12.dp else 20.dp,
@@ -176,6 +177,14 @@ fun NoteContentEditor(
                 EditorCodeBlockBackgrounds(
                     state = state,
                     backgroundColor = syntaxColors.background ?: fallbackCodeBackground
+                )
+
+                // VSCode-style indent guides, also behind the text but above the block backgrounds
+                IndentGuideLines(
+                    layoutResult = state.textLayoutResult,
+                    text = state.contentFieldValue.text,
+                    appSettings = appSettings,
+                    gutterWidthDp = gutterWidthDp
                 )
 
                 if (state.contentFieldValue.text.isEmpty()) {

@@ -1,5 +1,8 @@
 package com.maciejhetman.notes.ui.components
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -46,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +59,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.Note
+import com.maciejhetman.notes.navigation.LocalSharedTransitionScope
+import com.maciejhetman.notes.navigation.LocalNavAnimatedVisibilityScope
 import com.maciejhetman.notes.ui.screens.buildNotePreview
 import com.maciejhetman.notes.ui.theme.LocalAppSettings
 import com.maciejhetman.notes.ui.theme.toComposeFontFamily
@@ -228,8 +235,49 @@ fun NoteItem(
 
     val appSettings = LocalAppSettings.current
     val fontFamily = appSettings.fontFamily.toComposeFontFamily()
+    
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
-    Box(modifier = modifier) {
+    val sharedElementModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${note.id}"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${note.id}_title"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    val dateSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${note.id}_date"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    val contentSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedBounds(
+                rememberSharedContentState(key = "note_${note.id}_content"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else Modifier
+
+    Box(
+        modifier = modifier
+    ) {
         Card(
             shape = shape,
             colors = CardDefaults.cardColors(
@@ -237,6 +285,7 @@ fun NoteItem(
             ),
             modifier = Modifier
                 .fillMaxWidth()
+                .then(sharedElementModifier)
                 .clip(shape)
                 .combinedClickable(
                     onClick = onClick,
@@ -269,14 +318,15 @@ fun NoteItem(
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
+                            modifier = titleSharedModifier.weight(1f)
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
                             text = formatTimestamp(note.modifiedAt),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            modifier = dateSharedModifier
                         )
                     }
                     if (note.content.isNotBlank()) {
@@ -293,7 +343,8 @@ fun NoteItem(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                lineHeight = 20.sp
+                                lineHeight = 20.sp,
+                                modifier = contentSharedModifier
                             )
                         }
                     }

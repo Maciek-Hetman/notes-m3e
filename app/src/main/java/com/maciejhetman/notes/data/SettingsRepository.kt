@@ -45,6 +45,23 @@ enum class AppThemeColor(val label: String) {
     RED("Red")
 }
 
+enum class IndentGuideColor(val label: String) {
+    AUTO("Auto"),
+    GRAY("Gray"),
+    BLUE("Blue"),
+    GREEN("Green"),
+    RED("Red"),
+    PURPLE("Purple"),
+    CYAN("Cyan")
+}
+
+enum class IndentGuideStyle(val label: String) {
+    OFF("Off"),
+    SOLID("Solid"),
+    DASHED("Dashed"),
+    DOTTED("Dotted")
+}
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val themeColor: AppThemeColor = AppThemeColor.DEFAULT,
@@ -55,7 +72,13 @@ data class AppSettings(
     val fontFamily: NoteFontFamily = NoteFontFamily.SYSTEM,
     val syntaxTheme: SyntaxTheme = SyntaxTheme.MATERIAL,
     val lineSpacing: EditorLineSpacing = EditorLineSpacing.NORMAL,
-    val enabledLanguages: Set<String> = emptySet()
+    val enabledLanguages: Set<String> = emptySet(),
+    val textIndentDepthSp: Float = 16f,
+    val textIndentColor: IndentGuideColor = IndentGuideColor.AUTO,
+    val textIndentStyle: IndentGuideStyle = IndentGuideStyle.DASHED,
+    val codeIndentDepthSp: Float = 24f,
+    val codeIndentColor: IndentGuideColor = IndentGuideColor.GRAY,
+    val codeIndentStyle: IndentGuideStyle = IndentGuideStyle.SOLID
 )
 
 private val Context.settingsDataStore by preferencesDataStore(name = "app_settings")
@@ -73,6 +96,12 @@ class SettingsRepository(private val context: Context) {
         val SYNTAX_THEME = stringPreferencesKey("syntax_theme")
         val LINE_SPACING = stringPreferencesKey("line_spacing")
         val ENABLED_LANGUAGES = stringSetPreferencesKey("enabled_languages")
+        val TEXT_INDENT_DEPTH_SP = floatPreferencesKey("text_indent_depth_sp")
+        val TEXT_INDENT_COLOR = stringPreferencesKey("text_indent_color")
+        val TEXT_INDENT_STYLE = stringPreferencesKey("text_indent_style")
+        val CODE_INDENT_DEPTH_SP = floatPreferencesKey("code_indent_depth_sp")
+        val CODE_INDENT_COLOR = stringPreferencesKey("code_indent_color")
+        val CODE_INDENT_STYLE = stringPreferencesKey("code_indent_style")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -86,7 +115,13 @@ class SettingsRepository(private val context: Context) {
             fontFamily = prefs[Keys.FONT_FAMILY]?.toEnumOrNull<NoteFontFamily>() ?: NoteFontFamily.SYSTEM,
             syntaxTheme = prefs[Keys.SYNTAX_THEME]?.toEnumOrNull<SyntaxTheme>() ?: SyntaxTheme.MATERIAL,
             lineSpacing = prefs[Keys.LINE_SPACING]?.toEnumOrNull<EditorLineSpacing>() ?: EditorLineSpacing.NORMAL,
-            enabledLanguages = prefs[Keys.ENABLED_LANGUAGES] ?: emptySet()
+            enabledLanguages = prefs[Keys.ENABLED_LANGUAGES] ?: emptySet(),
+            textIndentDepthSp = prefs[Keys.TEXT_INDENT_DEPTH_SP] ?: 16f,
+            textIndentColor = prefs[Keys.TEXT_INDENT_COLOR]?.toEnumOrNull<IndentGuideColor>() ?: IndentGuideColor.AUTO,
+            textIndentStyle = prefs[Keys.TEXT_INDENT_STYLE]?.toEnumOrNull<IndentGuideStyle>() ?: IndentGuideStyle.DASHED,
+            codeIndentDepthSp = prefs[Keys.CODE_INDENT_DEPTH_SP] ?: 24f,
+            codeIndentColor = prefs[Keys.CODE_INDENT_COLOR]?.toEnumOrNull<IndentGuideColor>() ?: IndentGuideColor.GRAY,
+            codeIndentStyle = prefs[Keys.CODE_INDENT_STYLE]?.toEnumOrNull<IndentGuideStyle>() ?: IndentGuideStyle.SOLID
         )
     }
 
@@ -128,6 +163,30 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setEnabledLanguages(languages: Set<String>) {
         context.settingsDataStore.edit { it[Keys.ENABLED_LANGUAGES] = languages }
+    }
+
+    suspend fun setTextIndentDepthSp(depthSp: Float) {
+        context.settingsDataStore.edit { it[Keys.TEXT_INDENT_DEPTH_SP] = depthSp }
+    }
+
+    suspend fun setTextIndentColor(color: IndentGuideColor) {
+        context.settingsDataStore.edit { it[Keys.TEXT_INDENT_COLOR] = color.name }
+    }
+
+    suspend fun setTextIndentStyle(style: IndentGuideStyle) {
+        context.settingsDataStore.edit { it[Keys.TEXT_INDENT_STYLE] = style.name }
+    }
+
+    suspend fun setCodeIndentDepthSp(depthSp: Float) {
+        context.settingsDataStore.edit { it[Keys.CODE_INDENT_DEPTH_SP] = depthSp }
+    }
+
+    suspend fun setCodeIndentColor(color: IndentGuideColor) {
+        context.settingsDataStore.edit { it[Keys.CODE_INDENT_COLOR] = color.name }
+    }
+
+    suspend fun setCodeIndentStyle(style: IndentGuideStyle) {
+        context.settingsDataStore.edit { it[Keys.CODE_INDENT_STYLE] = style.name }
     }
 }
 

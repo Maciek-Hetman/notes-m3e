@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maciejhetman.notes.data.AppSettings
 import com.maciejhetman.notes.data.EditorLineSpacing
+import com.maciejhetman.notes.data.IndentGuideColor
+import com.maciejhetman.notes.data.IndentGuideStyle
 import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.data.NoteFontFamily
 import com.maciejhetman.notes.data.SettingsRepository
@@ -121,6 +123,66 @@ class SettingsViewModel(
                 repository.setEnabledLanguages(languages)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set enabled languages", e)
+            }
+        }
+    }
+
+    fun setTextIndentDepthSp(depthSp: Float) {
+        viewModelScope.launch {
+            try {
+                repository.setTextIndentDepthSp(depthSp)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set text indent depth", e)
+            }
+        }
+    }
+
+    fun setTextIndentColor(color: IndentGuideColor) {
+        viewModelScope.launch {
+            try {
+                repository.setTextIndentColor(color)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set text indent color", e)
+            }
+        }
+    }
+
+    fun setTextIndentStyle(style: IndentGuideStyle) {
+        viewModelScope.launch {
+            try {
+                repository.setTextIndentStyle(style)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set text indent style", e)
+            }
+        }
+    }
+
+    fun setCodeIndentDepthSp(depthSp: Float) {
+        viewModelScope.launch {
+            try {
+                repository.setCodeIndentDepthSp(depthSp)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set code indent depth", e)
+            }
+        }
+    }
+
+    fun setCodeIndentColor(color: IndentGuideColor) {
+        viewModelScope.launch {
+            try {
+                repository.setCodeIndentColor(color)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set code indent color", e)
+            }
+        }
+    }
+
+    fun setCodeIndentStyle(style: IndentGuideStyle) {
+        viewModelScope.launch {
+            try {
+                repository.setCodeIndentStyle(style)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set code indent style", e)
             }
         }
     }
