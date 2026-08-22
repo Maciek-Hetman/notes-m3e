@@ -1,16 +1,20 @@
 package com.maciejhetman.notes.ui.screens
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -26,11 +30,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,9 +49,6 @@ import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.data.NoteFontFamily
 import com.maciejhetman.notes.data.SyntaxTheme
 import com.maciejhetman.notes.data.ThemeMode
-import com.maciejhetman.notes.ui.util.tap
-import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
-import kotlin.math.roundToInt
 import com.maciejhetman.notes.ui.components.SettingsCard
 import com.maciejhetman.notes.ui.components.SettingsClickableRow
 import com.maciejhetman.notes.ui.components.SettingsDivider
@@ -58,6 +59,9 @@ import com.maciejhetman.notes.ui.components.SettingsSliderRow
 import com.maciejhetman.notes.ui.components.SettingsSwitchRow
 import com.maciejhetman.notes.ui.components.lineNumberModeLabel
 import com.maciejhetman.notes.ui.components.themeModeLabel
+import com.maciejhetman.notes.ui.util.tap
+import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +73,10 @@ fun SettingsScreen(
     val haptics = LocalHapticFeedback.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var showLanguageDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showLanguageDialog) {
+        showLanguageDialog = false
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -95,178 +103,207 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
-        Column(
+        // Lazy sections so the hierarchical enter transition does not compose every control
+        // on the first frames — only the preview and first visible cards mount immediately.
+        LazyColumn(
             modifier = Modifier
                 .padding(innerPadding)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            SettingsSectionHeader("Preview")
-            SettingsLivePreviewCard(settings = settings)
+            item(key = "preview_header") {
+                SettingsSectionHeader("Preview")
+            }
+            item(key = "preview") {
+                SettingsLivePreviewCard(settings = settings)
+            }
 
-            SettingsSectionHeader("Appearance")
-            SettingsCard {
-                SettingsMenuRow(
-                    title = "Theme",
-                    options = ThemeMode.entries,
-                    selected = settings.themeMode,
-                    labelFor = ::themeModeLabel,
-                    onSelect = viewModel::setThemeMode
-                )
+            item(key = "appearance_header") {
+                SettingsSectionHeader("Appearance")
+            }
+            item(key = "appearance") {
+                SettingsCard {
+                    SettingsMenuRow(
+                        title = "Theme",
+                        options = ThemeMode.entries,
+                        selected = settings.themeMode,
+                        labelFor = ::themeModeLabel,
+                        onSelect = viewModel::setThemeMode
+                    )
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        SettingsDivider()
+                        SettingsSwitchRow(
+                            title = "Material You",
+                            checked = settings.dynamicColor,
+                            onCheckedChange = viewModel::setDynamicColor
+                        )
+                    }
+
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !settings.dynamicColor) {
+                        SettingsDivider()
+                        SettingsMenuRow(
+                            title = "Color",
+                            options = com.maciejhetman.notes.data.AppThemeColor.entries,
+                            selected = settings.themeColor,
+                            labelFor = { it.label },
+                            onSelect = viewModel::setThemeColor
+                        )
+                    }
+
                     SettingsDivider()
                     SettingsSwitchRow(
-                        title = "Material You",
-                        checked = settings.dynamicColor,
-                        onCheckedChange = viewModel::setDynamicColor
+                        title = "AMOLED black",
+                        checked = settings.amoledBlack,
+                        onCheckedChange = viewModel::setAmoledBlack
                     )
                 }
+            }
 
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !settings.dynamicColor) {
+            item(key = "typography_header") {
+                SettingsSectionHeader("Typography & Font")
+            }
+            item(key = "typography") {
+                SettingsCard {
+                    SettingsMenuRow(
+                        title = "Font style",
+                        options = NoteFontFamily.entries,
+                        selected = settings.fontFamily,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setFontFamily
+                    )
+
                     SettingsDivider()
+
+                    val fontPercent = (settings.fontSizeScale * 100).roundToInt()
+                    SettingsSliderRow(
+                        title = "Font size",
+                        value = settings.fontSizeScale,
+                        valueRange = 0.70f..1.50f,
+                        valueLabel = "$fontPercent%",
+                        onValueChange = viewModel::setFontSizeScale
+                    )
+
+                    SettingsDivider()
+
+                    SettingsMenuRow(
+                        title = "Line spacing",
+                        options = EditorLineSpacing.entries,
+                        selected = settings.lineSpacing,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setLineSpacing
+                    )
+                }
+            }
+
+            item(key = "code_header") {
+                SettingsSectionHeader("Code & Line Numbers")
+            }
+            item(key = "code") {
+                SettingsCard {
+                    SettingsMenuRow(
+                        title = "Syntax highlighting theme",
+                        options = SyntaxTheme.entries,
+                        selected = settings.syntaxTheme,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setSyntaxTheme
+                    )
+
+                    SettingsDivider()
+
+                    SettingsMenuRow(
+                        title = "Line numbers",
+                        options = LineNumberMode.entries,
+                        selected = settings.lineNumberMode,
+                        labelFor = ::lineNumberModeLabel,
+                        onSelect = viewModel::setLineNumberMode
+                    )
+
+                    SettingsDivider()
+
+                    val countLabel = if (settings.enabledLanguages.isEmpty()) {
+                        "All languages (${SUPPORTED_LANGUAGES.size})"
+                    } else {
+                        "${settings.enabledLanguages.size} of ${SUPPORTED_LANGUAGES.size} enabled"
+                    }
+                    SettingsClickableRow(
+                        title = "Visible programming languages",
+                        subtitle = countLabel,
+                        onClick = { showLanguageDialog = true }
+                    )
+                }
+            }
+
+            item(key = "code_indent_header") {
+                SettingsSectionHeader("Code Block Indent Guides")
+            }
+            item(key = "code_indent") {
+                SettingsCard {
+                    SettingsMenuRow(
+                        title = "Style",
+                        options = IndentGuideStyle.entries,
+                        selected = settings.codeIndentStyle,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setCodeIndentStyle
+                    )
+
+                    SettingsDivider()
+
                     SettingsMenuRow(
                         title = "Color",
-                        options = com.maciejhetman.notes.data.AppThemeColor.entries,
-                        selected = settings.themeColor,
+                        options = IndentGuideColor.entries,
+                        selected = settings.codeIndentColor,
                         labelFor = { it.label },
-                        onSelect = viewModel::setThemeColor
+                        onSelect = viewModel::setCodeIndentColor
+                    )
+
+                    SettingsDivider()
+
+                    val codeDepthLabel = "${settings.codeIndentDepthSp.roundToInt()} sp per level"
+                    SettingsSliderRow(
+                        title = "Depth",
+                        value = settings.codeIndentDepthSp,
+                        valueRange = 4f..40f,
+                        valueLabel = codeDepthLabel,
+                        onValueChange = viewModel::setCodeIndentDepthSp
                     )
                 }
-
-                SettingsDivider()
-                SettingsSwitchRow(
-                    title = "AMOLED black",
-                    checked = settings.amoledBlack,
-                    onCheckedChange = viewModel::setAmoledBlack
-                )
             }
 
-            SettingsSectionHeader("Typography & Font")
-            SettingsCard {
-                SettingsMenuRow(
-                    title = "Font style",
-                    options = NoteFontFamily.entries,
-                    selected = settings.fontFamily,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setFontFamily
-                )
-
-                SettingsDivider()
-
-                val fontPercent = (settings.fontSizeScale * 100).roundToInt()
-                SettingsSliderRow(
-                    title = "Font size",
-                    value = settings.fontSizeScale,
-                    valueRange = 0.70f..1.50f,
-                    valueLabel = "$fontPercent%",
-                    onValueChange = viewModel::setFontSizeScale
-                )
-
-                SettingsDivider()
-
-                SettingsMenuRow(
-                    title = "Line spacing",
-                    options = EditorLineSpacing.entries,
-                    selected = settings.lineSpacing,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setLineSpacing
-                )
+            item(key = "text_indent_header") {
+                SettingsSectionHeader("Text Indent Guides")
             }
+            item(key = "text_indent") {
+                SettingsCard {
+                    SettingsMenuRow(
+                        title = "Style",
+                        options = IndentGuideStyle.entries,
+                        selected = settings.textIndentStyle,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setTextIndentStyle
+                    )
 
-            SettingsSectionHeader("Code & Line Numbers")
-            SettingsCard {
-                SettingsMenuRow(
-                    title = "Syntax highlighting theme",
-                    options = SyntaxTheme.entries,
-                    selected = settings.syntaxTheme,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setSyntaxTheme
-                )
+                    SettingsDivider()
 
-                SettingsDivider()
+                    SettingsMenuRow(
+                        title = "Color",
+                        options = IndentGuideColor.entries,
+                        selected = settings.textIndentColor,
+                        labelFor = { it.label },
+                        onSelect = viewModel::setTextIndentColor
+                    )
 
-                SettingsMenuRow(
-                    title = "Line numbers",
-                    options = LineNumberMode.entries,
-                    selected = settings.lineNumberMode,
-                    labelFor = ::lineNumberModeLabel,
-                    onSelect = viewModel::setLineNumberMode
-                )
+                    SettingsDivider()
 
-                SettingsDivider()
-
-                val countLabel = if (settings.enabledLanguages.isEmpty()) "All languages (${SUPPORTED_LANGUAGES.size})" else "${settings.enabledLanguages.size} of ${SUPPORTED_LANGUAGES.size} enabled"
-                SettingsClickableRow(
-                    title = "Visible programming languages",
-                    subtitle = countLabel,
-                    onClick = { showLanguageDialog = true }
-                )
-            }
-
-            SettingsSectionHeader("Code Block Indent Guides")
-            SettingsCard {
-                SettingsMenuRow(
-                    title = "Style",
-                    options = IndentGuideStyle.entries,
-                    selected = settings.codeIndentStyle,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setCodeIndentStyle
-                )
-
-                SettingsDivider()
-
-                SettingsMenuRow(
-                    title = "Color",
-                    options = IndentGuideColor.entries,
-                    selected = settings.codeIndentColor,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setCodeIndentColor
-                )
-
-                SettingsDivider()
-
-                val codeDepthLabel = "${settings.codeIndentDepthSp.roundToInt()} sp per level"
-                SettingsSliderRow(
-                    title = "Depth",
-                    value = settings.codeIndentDepthSp,
-                    valueRange = 4f..40f,
-                    valueLabel = codeDepthLabel,
-                    onValueChange = viewModel::setCodeIndentDepthSp
-                )
-            }
-
-            SettingsSectionHeader("Text Indent Guides")
-            SettingsCard {
-                SettingsMenuRow(
-                    title = "Style",
-                    options = IndentGuideStyle.entries,
-                    selected = settings.textIndentStyle,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setTextIndentStyle
-                )
-
-                SettingsDivider()
-
-                SettingsMenuRow(
-                    title = "Color",
-                    options = IndentGuideColor.entries,
-                    selected = settings.textIndentColor,
-                    labelFor = { it.label },
-                    onSelect = viewModel::setTextIndentColor
-                )
-
-                SettingsDivider()
-
-                val textDepthLabel = "${settings.textIndentDepthSp.roundToInt()} sp per level"
-                SettingsSliderRow(
-                    title = "Depth",
-                    value = settings.textIndentDepthSp,
-                    valueRange = 4f..40f,
-                    valueLabel = textDepthLabel,
-                    onValueChange = viewModel::setTextIndentDepthSp
-                )
+                    val textDepthLabel = "${settings.textIndentDepthSp.roundToInt()} sp per level"
+                    SettingsSliderRow(
+                        title = "Depth",
+                        value = settings.textIndentDepthSp,
+                        valueRange = 4f..40f,
+                        valueLabel = textDepthLabel,
+                        onValueChange = viewModel::setTextIndentDepthSp
+                    )
+                }
             }
         }
     }
@@ -326,7 +363,7 @@ fun SettingsScreen(
                                 checked = isChecked,
                                 onCheckedChange = null
                             )
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = lang.name,
                                 style = MaterialTheme.typography.bodyMedium.copy(
@@ -353,5 +390,3 @@ fun SettingsScreen(
         )
     }
 }
-
-

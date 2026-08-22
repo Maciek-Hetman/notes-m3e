@@ -94,7 +94,7 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
             "}\n" +
             "```"
 
-    val transformation = remember(settings, primaryColor, onSurfaceColor, surfaceVariant, gutterWidthSp, isDark) {
+    val transformation = remember(settings, primaryColor, onSurfaceColor, surfaceVariant, gutterWidthSp, isDark, syntaxColors) {
         MarkdownVisualTransformation(
             primaryColor = primaryColor,
             onSurfaceColor = onSurfaceColor,
@@ -110,8 +110,15 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
         )
     }
 
+    // Precompute once per transformation identity — calling filter() during every
+    // unrelated recomposition (scroll, layout pass) was a main-thread hotspot while
+    // Settings entered with the hierarchical transition.
+    val transformedText = remember(transformation, sampleMarkdown) {
+        transformation.filter(androidx.compose.ui.text.AnnotatedString(sampleMarkdown)).text
+    }
+
     Card(
-        modifier = Modifier
+        modifier = modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
             .height(320.dp),
@@ -123,7 +130,6 @@ fun SettingsLivePreviewCard(settings: AppSettings, modifier: Modifier = Modifier
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            val transformedText = transformation.filter(androidx.compose.ui.text.AnnotatedString(sampleMarkdown)).text
             var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
             Box {

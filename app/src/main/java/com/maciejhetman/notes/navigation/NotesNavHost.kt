@@ -4,32 +4,31 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.maciejhetman.notes.NotesApplication
+import com.maciejhetman.notes.ui.animation.Motion
 import com.maciejhetman.notes.ui.screens.NoteDetailScreen
 import com.maciejhetman.notes.ui.screens.NoteListScreen
 import com.maciejhetman.notes.ui.screens.SettingsScreen
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
 import com.maciejhetman.notes.ui.viewmodel.SettingsViewModel
-
-// Shared timing for every nav transition below, tuned to feel snappy without being abrupt.
-private const val NAV_ANIMATION_DURATION_MS = 320
 
 val LocalNavAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -42,6 +41,9 @@ private fun <T : ViewModel> viewModelFactory(builder: () -> T): ViewModelProvide
         override fun <VM : ViewModel> create(modelClass: Class<VM>): VM = builder() as VM
     }
 
+private fun NavBackStackEntry.destinationKind(): NavDestinationKind =
+    navDestinationKind(destination.route)
+
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun NotesNavHost() {
@@ -51,6 +53,13 @@ fun NotesNavHost() {
     val repository = application.repository
     val folderRepository = application.folderRepository
     val settingsRepository = application.settingsRepository
+    val layoutDirection = LocalLayoutDirection.current
+
+    val motionScheme = MaterialTheme.motionScheme
+    val enterSpatialSpec = motionScheme.defaultSpatialSpec<IntOffset>()
+    val enterEffectsSpec = motionScheme.fastEffectsSpec<Float>()
+    val popSpec = Motion.popFloatSpec()
+    val popSlideSpec = Motion.popSlideSpec()
 
     SharedTransitionLayout {
         CompositionLocalProvider(
@@ -61,10 +70,49 @@ fun NotesNavHost() {
                 startDestination = Routes.NoteList()
             ) {
                 composable<Routes.NoteList>(
-                    enterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS)) },
-                    exitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS)) },
-                    popEnterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS)) },
-                    popExitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS)) },
+                    enterTransition = {
+                        when (navTransitionKind(initialState.destinationKind(), targetState.destinationKind())) {
+                            NavTransitionKind.Hierarchical -> Motion.Hierarchical.forwardEnter(
+                                enterSpatialSpec,
+                                enterEffectsSpec,
+                                layoutDirection,
+                            )
+                            NavTransitionKind.ContainerTransform,
+                            NavTransitionKind.Fade -> fadeIn(enterEffectsSpec)
+                        }
+                    },
+                    exitTransition = {
+                        when (navTransitionKind(initialState.destinationKind(), targetState.destinationKind())) {
+                            NavTransitionKind.Hierarchical -> Motion.Hierarchical.forwardExit(
+                                enterSpatialSpec,
+                                enterEffectsSpec,
+                                layoutDirection,
+                            )
+                            NavTransitionKind.ContainerTransform,
+                            NavTransitionKind.Fade -> fadeOut(enterEffectsSpec)
+                        }
+                    },
+                    popEnterTransition = {
+                        when (navTransitionKind(initialState.destinationKind(), targetState.destinationKind())) {
+                            NavTransitionKind.Hierarchical -> Motion.Hierarchical.popEnter(
+                                popSlideSpec,
+                                layoutDirection,
+                            )
+                            NavTransitionKind.ContainerTransform,
+                            NavTransitionKind.Fade -> fadeIn(popSpec)
+                        }
+                    },
+                    popExitTransition = {
+                        when (navTransitionKind(initialState.destinationKind(), targetState.destinationKind())) {
+                            NavTransitionKind.Hierarchical -> Motion.Hierarchical.popExit(
+                                popSlideSpec,
+                                popSpec,
+                                layoutDirection,
+                            )
+                            NavTransitionKind.ContainerTransform,
+                            NavTransitionKind.Fade -> fadeOut(popSpec)
+                        }
+                    },
                 ) { backStackEntry ->
                     CompositionLocalProvider(
                         LocalNavAnimatedVisibilityScope provides this@composable,
@@ -84,12 +132,12 @@ fun NotesNavHost() {
                         )
                     }
                 }
-                
+
                 composable<Routes.NoteDetail>(
-                    enterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS)) },
-                    exitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS)) },
-                    popEnterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS)) },
-                    popExitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS)) },
+                    enterTransition = { fadeIn(enterEffectsSpec) },
+                    exitTransition = { fadeOut(enterEffectsSpec) },
+                    popEnterTransition = { fadeIn(popSpec) },
+                    popExitTransition = { fadeOut(popSpec) },
                 ) { backStackEntry ->
                     CompositionLocalProvider(
                         LocalNavAnimatedVisibilityScope provides this@composable,
@@ -108,15 +156,25 @@ fun NotesNavHost() {
 
                 composable<Routes.Settings>(
                     enterTransition = {
-                        slideInVertically(tween(NAV_ANIMATION_DURATION_MS)) { fullHeight -> fullHeight / 8 } +
-                            fadeIn(tween(NAV_ANIMATION_DURATION_MS))
+                        Motion.Hierarchical.forwardEnter(
+                            enterSpatialSpec,
+                            enterEffectsSpec,
+                            layoutDirection,
+                        )
                     },
-                    exitTransition = { fadeOut(tween(NAV_ANIMATION_DURATION_MS / 2)) },
-                    popEnterTransition = { fadeIn(tween(NAV_ANIMATION_DURATION_MS / 2)) },
+                    exitTransition = {
+                        Motion.Hierarchical.forwardExit(
+                            enterSpatialSpec,
+                            enterEffectsSpec,
+                            layoutDirection,
+                        )
+                    },
+                    popEnterTransition = {
+                        Motion.Hierarchical.popEnter(popSlideSpec, layoutDirection)
+                    },
                     popExitTransition = {
-                        slideOutVertically(tween(NAV_ANIMATION_DURATION_MS)) { fullHeight -> fullHeight / 8 } +
-                            fadeOut(tween(NAV_ANIMATION_DURATION_MS))
-                    }
+                        Motion.Hierarchical.popExit(popSlideSpec, popSpec, layoutDirection)
+                    },
                 ) {
                     CompositionLocalProvider(
                         LocalNavAnimatedVisibilityScope provides this@composable,
