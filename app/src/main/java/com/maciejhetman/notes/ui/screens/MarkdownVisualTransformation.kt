@@ -86,6 +86,44 @@ fun computeNumberedLines(text: String, mode: LineNumberMode): List<NumberedLine>
     }
 }
 
+/**
+ * Process-wide store for an off-main-thread [VisualTransformation.filter] result.
+ *
+ * The heavy part of [MarkdownVisualTransformation] is the regex parsing inside `filter()`, which
+ * BasicTextField always invokes synchronously on the main thread. To keep the note-open
+ * transition jank-free, NoteDetailScreen schedules the parse on `Dispatchers.Default` as soon as
+ * the content is known and stores the result here. [PrecomputedVisualTransformation] then serves
+ * that result when the text field asks for it, so the parse never lands on a transition frame.
+ */
+object PrecomputedFilterStore {
+    @Volatile
+    private var entry: Triple<Any, String, TransformedText>? = null
+
+    /** Publishes a finished precompute for [text], tagged with the producing transformation. */
+    fun publish(owner: Any, text: String, result: TransformedText) {
+        entry = Triple(owner, text, result)
+    }
+
+    /** Returns the published result only when it was made by [owner] for exactly [text]. */
+    fun consume(owner: Any, text: String): TransformedText? =
+        entry?.takeIf { it.first === owner && it.second == text }?.third
+}
+
+/**
+ * Serves the [PrecomputedFilterStore] result when the field's text matches the precomputed one;
+ * otherwise delegates to [delegate] (computing inline, exactly as before). Composition and layout
+ * run on the main thread, so publication is always observed between frames — an in-flight worker
+ * for the current text can never overwrite a result the UI already moved past.
+ */
+class PrecomputedVisualTransformation(
+    private val delegate: MarkdownVisualTransformation,
+    private val precomputeOwner: Any = delegate
+) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        return PrecomputedFilterStore.consume(precomputeOwner, text.text) ?: delegate.filter(text)
+    }
+}
+
 class MarkdownVisualTransformation(
     private val primaryColor: Color,
     private val onSurfaceColor: Color,

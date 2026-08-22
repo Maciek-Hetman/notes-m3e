@@ -53,6 +53,7 @@ class NoteListViewModel(
             notes.filter { it.createdAt in filter.startInclusive..filter.endInclusive }
         } ?: notes
         NoteListUiState(
+            isLoading = false,
             folders = folders,
             notes = filtered.sortedWith(sortOption.comparator),
             sortOption = sortOption,
@@ -61,7 +62,7 @@ class NoteListViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = NoteListUiState()
+        initialValue = NoteListUiState(isLoading = true)
     )
 
     fun onSearchQueryChange(query: String) {
@@ -140,6 +141,7 @@ data class DateRangeFilter(
 )
 
 data class NoteListUiState(
+    val isLoading: Boolean = true,
     val folders: List<Folder> = emptyList(),
     val notes: List<Note> = emptyList(),
     val sortOption: SortOption = SortOption.MODIFIED_NEWEST,

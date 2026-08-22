@@ -1,6 +1,11 @@
 package com.maciejhetman.notes.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -39,6 +44,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.ui.util.tap
@@ -100,6 +106,11 @@ fun MarkdownToolbar(
 ) {
     var state by remember { mutableStateOf(ToolbarState.Main) }
 
+    // Captured here because AnimatedContent's transitionSpec lambda is not composable.
+    val motionScheme = MaterialTheme.motionScheme
+    val slideSpec = motionScheme.fastSpatialSpec<IntOffset>()
+    val effectsSpec = motionScheme.fastEffectsSpec<Float>()
+
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -109,7 +120,21 @@ fun MarkdownToolbar(
     ) {
         AnimatedContent(
             targetState = state,
-            label = "toolbar_state"
+            label = "toolbar_state",
+            transitionSpec = {
+                val goingDeeper = targetState.ordinal > initialState.ordinal
+                if (goingDeeper) {
+                    (slideInHorizontally(animationSpec = slideSpec) { it / 3 } +
+                        fadeIn(effectsSpec)) togetherWith
+                        (slideOutHorizontally(animationSpec = slideSpec) { -it / 3 } +
+                            fadeOut(effectsSpec))
+                } else {
+                    (slideInHorizontally(animationSpec = slideSpec) { -it / 3 } +
+                        fadeIn(effectsSpec)) togetherWith
+                        (slideOutHorizontally(animationSpec = slideSpec) { it / 3 } +
+                            fadeOut(effectsSpec))
+                }
+            }
         ) { targetState ->
             Row(
                 modifier = Modifier

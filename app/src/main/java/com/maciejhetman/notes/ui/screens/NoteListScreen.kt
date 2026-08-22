@@ -34,7 +34,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.IconButton
@@ -62,16 +61,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.maciejhetman.notes.data.Folder
 import com.maciejhetman.notes.data.Note
+import com.maciejhetman.notes.ui.animation.Motion
 import com.maciejhetman.notes.ui.util.confirm
 import com.maciejhetman.notes.ui.util.reject
 import com.maciejhetman.notes.ui.util.tap
@@ -92,7 +97,7 @@ import com.maciejhetman.notes.ui.components.formatDateRange
 @Composable
 fun NoteListScreen(
     viewModel: NoteListViewModel,
-    onNoteClick: (Long) -> Unit,
+    onNoteClick: (Note) -> Unit,
     onAddNoteClick: () -> Unit,
     onFolderClick: (Long) -> Unit,
     onSettingsClick: () -> Unit,
@@ -111,6 +116,14 @@ fun NoteListScreen(
     var newFolderName by remember { mutableStateOf("") }
     var isFabExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    val motionScheme = MaterialTheme.motionScheme
+    val itemFadeInSpec = motionScheme.fastEffectsSpec<Float>()
+    val itemPlacementSpec = Motion.listItemPlacementSpec<IntOffset>()
+    val itemFadeOutSpec = motionScheme.fastEffectsSpec<Float>()
+    val effectsSpec = motionScheme.fastEffectsSpec<Float>()
+    val spatialSpec = motionScheme.fastSpatialSpec<Float>()
+    val slideSpec = motionScheme.fastSpatialSpec<IntOffset>()
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -151,7 +164,11 @@ fun NoteListScreen(
                                 // Crossfade between the two trailing actions so both always occupy
                                 // the exact same slot as the built-in search-bar chrome — guarantees
                                 // the settings icon is vertically centered exactly like Clear is.
-                                Crossfade(targetState = searchQuery.isNotEmpty(), label = "search_trailing_icon") { hasQuery ->
+                                Crossfade(
+                                    targetState = searchQuery.isNotEmpty(),
+                                    animationSpec = effectsSpec,
+                                    label = "search_trailing_icon"
+                                ) { hasQuery ->
                                     if (hasQuery) {
                                         IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
                                             Icon(Icons.Default.Close, contentDescription = "Clear search")
@@ -281,8 +298,10 @@ fun NoteListScreen(
             Column(horizontalAlignment = Alignment.End) {
                 AnimatedVisibility(
                     visible = isFabExpanded,
-                    enter = fadeIn() + slideInVertically { it / 2 },
-                    exit = fadeOut() + slideOutVertically { it / 2 }
+                    enter = fadeIn(effectsSpec) +
+                        slideInVertically(animationSpec = slideSpec) { it / 2 },
+                    exit = fadeOut(effectsSpec) +
+                        slideOutVertically(animationSpec = slideSpec) { it / 2 }
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
@@ -320,10 +339,24 @@ fun NoteListScreen(
                 }
                 FloatingActionButton(
                     onClick = { isFabExpanded = !isFabExpanded },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Icon(if (isFabExpanded) Icons.Default.Close else Icons.Default.Add, contentDescription = "Add")
+                    AnimatedContent(
+                        targetState = isFabExpanded,
+                        label = "fab_icon",
+                        transitionSpec = {
+                            (scaleIn(
+                                animationSpec = spatialSpec,
+                                initialScale = 0.6f
+                            ) + fadeIn(effectsSpec)) togetherWith
+                                (scaleOut(
+                                    animationSpec = spatialSpec,
+                                    targetScale = 0.6f
+                                ) + fadeOut(effectsSpec))
+                        }
+                    ) { expanded ->
+                        Icon(if (expanded) Icons.Default.Close else Icons.Default.Add, contentDescription = "Add")
+                    }
                 }
             }
         }
@@ -333,7 +366,9 @@ fun NoteListScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (uiState.notes.isEmpty() && uiState.folders.isEmpty()) {
+            if (uiState.isLoading) {
+                // Show nothing while loading to avoid flash
+            } else if (uiState.notes.isEmpty() && uiState.folders.isEmpty()) {
                 // ── Empty state ──────────────────────────────────────────
                 EmptyNotesPlaceholder(
                     isSearching = searchQuery.isNotEmpty() || uiState.dateRangeFilter != null,
@@ -356,7 +391,13 @@ fun NoteListScreen(
                             folder = folder,
                             onClick = { onFolderClick(folder.id) },
                             onDeleteClick = { folderToDelete = folder },
-                            modifier = Modifier.padding(horizontal = 16.dp)
+                            modifier = Modifier
+                                .animateItem(
+                                    fadeInSpec = itemFadeInSpec,
+                                    placementSpec = itemPlacementSpec,
+                                    fadeOutSpec = itemFadeOutSpec
+                                )
+                                .padding(horizontal = 16.dp)
                         )
                     }
                     items(
@@ -365,9 +406,14 @@ fun NoteListScreen(
                     ) { note ->
                         SwipeableNoteItem(
                             note = note,
-                            onClick = { onNoteClick(note.id) },
+                            onClick = { onNoteClick(note) },
                             onDismiss = { noteToDelete = note },
-                            onDeleteClick = { noteToDelete = note }
+                            onDeleteClick = { noteToDelete = note },
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = itemFadeInSpec,
+                                placementSpec = itemPlacementSpec,
+                                fadeOutSpec = itemFadeOutSpec
+                            )
                         )
                     }
                 }

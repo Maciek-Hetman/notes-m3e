@@ -48,13 +48,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -65,6 +68,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.maciejhetman.notes.navigation.LocalNavAnimatedVisibilityScope
 import com.maciejhetman.notes.navigation.LocalSharedTransitionScope
+import com.maciejhetman.notes.ui.animation.Motion
 import com.maciejhetman.notes.ui.components.MarkdownToolbar
 import com.maciejhetman.notes.ui.components.NoteContentEditor
 import com.maciejhetman.notes.ui.components.buildInsertedValue
@@ -74,6 +78,9 @@ import com.maciejhetman.notes.ui.theme.isAppDarkTheme
 import com.maciejhetman.notes.ui.theme.toComposeFontFamily
 import com.maciejhetman.notes.ui.util.IMAGE_MARKDOWN_REGEX
 import com.maciejhetman.notes.ui.util.copyUriToInternalStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import com.maciejhetman.notes.ui.viewmodel.NoteDetailViewModel
 import com.maciejhetman.notes.ui.viewmodel.SavedState
 import kotlinx.coroutines.delay
@@ -88,7 +95,9 @@ fun NoteDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val contentFocusRequester = remember { FocusRequester() }
-    val editorState = rememberNoteEditorState(uiState.content)
+    // Seed with the content passed through navigation so the first composed frame already shows
+    // the note; the LaunchedEffect below replaces it with Room's authoritative copy once loaded.
+    val editorState = rememberNoteEditorState(uiState.initialContent ?: uiState.content)
 
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -198,10 +207,10 @@ fun NoteDetailScreen(
         }
     }
 
-    // Recreated only when theme colors, user preferences, or image-related state actually change
-    val markdownTransformation = remember(
-        primaryColor, onSurfaceColor, surfaceVariant, cursorInsideImage, editorState.contentFieldValue.selection,
-        editorState.imageAspectRatios.toMap(), containerWidthDp, fontScale, fontFamily,
+    // Slow-input transformation: recreated only when theme colors or user preferences change.
+    // Also used as the owner identity for the precomputed filter result below.
+    val baseTransformation = remember(
+        primaryColor, onSurfaceColor, surfaceVariant, fontScale, fontFamily,
         appSettings.lineNumberMode, gutterWidthSp, syntaxColors
     ) {
         MarkdownVisualTransformation(
@@ -219,43 +228,66 @@ fun NoteDetailScreen(
         )
     }
 
+    // Parse the opening content off the main thread as soon as it's known — for existing notes
+    // that's the navigation seed, available at first composition, a full Room roundtrip before
+    // the editor needs it. BasicTextField's synchronous filter() call is then served from
+    // PrecomputedFilterStore instead of running ten regex passes on a transition frame. Runs
+    // once per baseTransformation: later keystrokes fall through to the normal inline filter.
+    LaunchedEffect(baseTransformation) {
+        val openingContent = snapshotFlow { uiState.initialContent ?: uiState.content }
+            .first { it.isNotEmpty() }
+        val transformed = withContext(Dispatchers.Default) {
+            baseTransformation.filter(AnnotatedString(openingContent))
+        }
+        PrecomputedFilterStore.publish(baseTransformation, openingContent, transformed)
+    }
+
+    // Live transformation: tracks fast inputs (cursor, image measurements) without paying the
+    // construction cost for the slow ones. The wrapper serves the precomputed parse on note open.
+    val markdownTransformation = remember(
+        baseTransformation, cursorInsideImage, editorState.contentFieldValue.selection,
+        editorState.imageAspectRatios.toMap(), containerWidthDp
+    ) {
+        PrecomputedVisualTransformation(
+            delegate = MarkdownVisualTransformation(
+                primaryColor = primaryColor,
+                onSurfaceColor = onSurfaceColor,
+                codeBackground = surfaceVariant,
+                selection = editorState.contentFieldValue.selection,
+                imageAspectRatios = editorState.imageAspectRatios,
+                containerWidthDp = containerWidthDp,
+                customHighlightColors = syntaxColors,
+                fontFamily = fontFamily,
+                fontScale = fontScale,
+                lineNumberMode = appSettings.lineNumberMode,
+                gutterWidth = gutterWidthSp
+            ),
+            precomputeOwner = baseTransformation
+        )
+    }
+
     // ── UI ─────────────────────────────────────────────────────────────────
 
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
+    val sharedBoundsTransform = Motion.DefaultBoundsTransform
+
+    // Single container transform — the ONLY shared element. Nesting child morphs (title/date/
+    // content) inside the container morph makes the overlay stretch one copy of the text while
+    // the children fly separately, which reads as doubled, grotesquely scaled ghost text.
+    // ScaleToBounds avoids per-frame remeasure of the full editor during the morph / predictive
+    // back seek (RemeasureToBounds was a measured jank hotspot).
     val sharedElementModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             Modifier.sharedBounds(
                 rememberSharedContentState(key = "note_${uiState.id}"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else Modifier
-
-    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${uiState.id}_title"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else Modifier
-
-    val dateSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${uiState.id}_date"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else Modifier
-
-    val contentSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${uiState.id}_content"),
-                animatedVisibilityScope = animatedVisibilityScope
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = sharedBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(
+                    contentScale = ContentScale.FillWidth,
+                    alignment = Alignment.TopStart
+                )
             )
         }
     } else Modifier
@@ -307,8 +339,14 @@ fun NoteDetailScreen(
                 Spacer(Modifier.width(4.dp))
                 AnimatedVisibility(
                     visible = showSavedIndicator,
-                    enter = fadeIn() + slideInVertically { -it },
-                    exit = fadeOut() + slideOutVertically { -it }
+                    enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                        slideInVertically(
+                            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                        ) { -it },
+                    exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                        slideOutVertically(
+                            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                        ) { -it }
                 ) {
                     Text(
                         "Saved",
@@ -322,7 +360,7 @@ fun NoteDetailScreen(
             BasicTextField(
                 value = uiState.title,
                 onValueChange = { viewModel.updateTitle(it) },
-                modifier = titleSharedModifier
+                modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
                 textStyle = MaterialTheme.typography.headlineLarge.copy(
@@ -358,7 +396,7 @@ fun NoteDetailScreen(
                 text = "Created $createdStr  •  Modified $modifiedStr",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = dateSharedModifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
             )
 
             HorizontalDivider(
@@ -377,7 +415,7 @@ fun NoteDetailScreen(
                 syntaxColors = syntaxColors,
                 fallbackCodeBackground = surfaceVariant,
                 gutterWidthDp = gutterWidthDp,
-                modifier = contentSharedModifier
+                modifier = Modifier
             )
 
             // Tapping the empty area below the content moves cursor to the end

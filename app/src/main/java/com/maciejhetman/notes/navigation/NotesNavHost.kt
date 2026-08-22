@@ -55,6 +55,9 @@ fun NotesNavHost() {
     val settingsRepository = application.settingsRepository
     val layoutDirection = LocalLayoutDirection.current
 
+    // Motion-scheme springs for time-driven enters/exits — captured here because the
+    // NavHost transition lambdas are not composable. Gesture-driven pops stay on
+    // LinearEasing tweens so predictive back tracks the finger one-to-one.
     val motionScheme = MaterialTheme.motionScheme
     val enterSpatialSpec = motionScheme.defaultSpatialSpec<IntOffset>()
     val enterEffectsSpec = motionScheme.fastEffectsSpec<Float>()
@@ -69,6 +72,7 @@ fun NotesNavHost() {
                 navController = navController,
                 startDestination = Routes.NoteList()
             ) {
+
                 composable<Routes.NoteList>(
                     enterTransition = {
                         when (navTransitionKind(initialState.destinationKind(), targetState.destinationKind())) {
@@ -120,13 +124,27 @@ fun NotesNavHost() {
                         val route = backStackEntry.toRoute<Routes.NoteList>()
                         val viewModel: NoteListViewModel = viewModel(
                             key = "notelist_${route.folderId}",
-                            factory = viewModelFactory { NoteListViewModel(repository, folderRepository, route.folderId) }
+                            factory = viewModelFactory {
+                                NoteListViewModel(repository, folderRepository, route.folderId)
+                            }
                         )
                         NoteListScreen(
                             viewModel = viewModel,
-                            onNoteClick = { noteId -> navController.navigate(Routes.NoteDetail(noteId, route.folderId)) },
-                            onAddNoteClick = { navController.navigate(Routes.NoteDetail(null, route.folderId)) },
-                            onFolderClick = { folderId -> navController.navigate(Routes.NoteList(folderId)) },
+                            onNoteClick = { note ->
+                                navController.navigate(
+                                    Routes.NoteDetail(
+                                        note.id,
+                                        route.folderId,
+                                        initialContent = note.content
+                                    )
+                                )
+                            },
+                            onAddNoteClick = {
+                                navController.navigate(Routes.NoteDetail(null, route.folderId))
+                            },
+                            onFolderClick = { folderId ->
+                                navController.navigate(Routes.NoteList(folderId))
+                            },
                             onSettingsClick = { navController.navigate(Routes.Settings) },
                             onBack = { if (route.folderId != null) navController.popBackStack() }
                         )
@@ -134,6 +152,9 @@ fun NotesNavHost() {
                 }
 
                 composable<Routes.NoteDetail>(
+                    // Shared-element pair with the list: pure container transform. The morph
+                    // carries all positional motion, so the screens themselves only fade —
+                    // a slide here would fight the morph and tear the card off the finger.
                     enterTransition = { fadeIn(enterEffectsSpec) },
                     exitTransition = { fadeOut(enterEffectsSpec) },
                     popEnterTransition = { fadeIn(popSpec) },
@@ -145,7 +166,14 @@ fun NotesNavHost() {
                         val route = backStackEntry.toRoute<Routes.NoteDetail>()
                         val viewModel: NoteDetailViewModel = viewModel(
                             key = "note_${route.noteId}",
-                            factory = viewModelFactory { NoteDetailViewModel(repository, route.noteId, route.folderId) }
+                            factory = viewModelFactory {
+                                NoteDetailViewModel(
+                                    repository,
+                                    route.noteId,
+                                    route.folderId,
+                                    route.initialContent
+                                )
+                            }
                         )
                         NoteDetailScreen(
                             viewModel = viewModel,

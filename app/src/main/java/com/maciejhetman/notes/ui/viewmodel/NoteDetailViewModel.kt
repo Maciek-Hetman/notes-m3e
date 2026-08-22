@@ -21,10 +21,18 @@ import kotlin.time.Duration.Companion.milliseconds
 class NoteDetailViewModel(
     private val repository: NoteRepository,
     private val noteId: Long?,
-    private val folderId: Long? = null
+    private val folderId: Long? = null,
+    initialContent: String? = null
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(NoteDetailUiState(id = noteId, folderId = folderId, isNew = noteId == null))
+    private val _uiState = MutableStateFlow(
+        NoteDetailUiState(
+            id = noteId,
+            folderId = folderId,
+            isNew = noteId == null,
+            initialContent = initialContent
+        )
+    )
     val uiState: StateFlow<NoteDetailUiState> = _uiState.asStateFlow()
 
     private var autoSaveJob: Job? = null
@@ -124,5 +132,11 @@ data class NoteDetailUiState(
     val createdAt: Long = System.currentTimeMillis(),
     val modifiedAt: Long = System.currentTimeMillis(),
     val isNew: Boolean = true,
-    val savedState: SavedState = SavedState.Idle
+    val savedState: SavedState = SavedState.Idle,
+    /**
+     * Content seed passed through navigation from the list screen, so the editor's first frame
+     * already shows the note instead of popping it in when the Room load lands mid-transition.
+     * Null for new notes. Cleared implicitly once [content] is loaded — Room stays authoritative.
+     */
+    val initialContent: String? = null
 )

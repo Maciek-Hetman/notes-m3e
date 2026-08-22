@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.navigation.LocalSharedTransitionScope
 import com.maciejhetman.notes.navigation.LocalNavAnimatedVisibilityScope
+import com.maciejhetman.notes.ui.animation.Motion
 import com.maciejhetman.notes.ui.screens.buildNotePreview
 import com.maciejhetman.notes.ui.theme.LocalAppSettings
 import com.maciejhetman.notes.ui.theme.toComposeFontFamily
@@ -155,7 +155,7 @@ fun formatDateRange(filter: DateRangeFilter): String {
 }
 
 @Suppress("DEPRECATION")
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SwipeableNoteItem(
     note: Note,
@@ -185,31 +185,37 @@ fun SwipeableNoteItem(
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
         backgroundContent = {
-            val color by animateColorAsState(
-                targetValue = when (dismissState.targetValue) {
-                    SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.surfaceVariant
-                    else -> MaterialTheme.colorScheme.errorContainer
-                },
-                animationSpec = tween(300),
-                label = "swipe_bg"
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(shape)
-                    .background(color),
-                contentAlignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd)
-                    Alignment.CenterStart else Alignment.CenterEnd
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = if (dismissState.targetValue == SwipeToDismissBoxValue.Settled)
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    else
-                        MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+            // While the card is off in the shared-element overlay (note open/close morph), its
+            // slot must stay empty — otherwise the dismiss affordance leaks through as a stray
+            // delete icon mid-transition.
+            val transitionActive = LocalSharedTransitionScope.current?.isTransitionActive == true
+            if (!transitionActive) {
+                val color by animateColorAsState(
+                    targetValue = when (dismissState.targetValue) {
+                        SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.surfaceVariant
+                        else -> MaterialTheme.colorScheme.errorContainer
+                    },
+                    animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                    label = "swipe_bg"
                 )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .background(color),
+                    contentAlignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd)
+                        Alignment.CenterStart else Alignment.CenterEnd
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = if (dismissState.targetValue == SwipeToDismissBoxValue.Settled)
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        else
+                            MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                }
             }
         }
     ) {
@@ -239,38 +245,22 @@ fun NoteItem(
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
+    val sharedBoundsTransform = Motion.DefaultBoundsTransform
+
+    // Single container transform — the ONLY shared element (see NoteDetailScreen for why
+    // nesting per-child morphs produces stretched ghost text). ScaleToBounds avoids per-frame
+    // remeasure of card + full editor during the morph, which was capping predictive-back pops
+    // near 30fps on device.
     val sharedElementModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             Modifier.sharedBounds(
                 rememberSharedContentState(key = "note_${note.id}"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else Modifier
-
-    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${note.id}_title"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else Modifier
-
-    val dateSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${note.id}_date"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else Modifier
-
-    val contentSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${note.id}_content"),
-                animatedVisibilityScope = animatedVisibilityScope
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = sharedBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(
+                    contentScale = ContentScale.FillWidth,
+                    alignment = Alignment.TopStart
+                )
             )
         }
     } else Modifier
@@ -318,7 +308,7 @@ fun NoteItem(
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = titleSharedModifier.weight(1f)
+                            modifier = Modifier.weight(1f)
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
@@ -326,7 +316,7 @@ fun NoteItem(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium,
-                            modifier = dateSharedModifier
+                            modifier = Modifier
                         )
                     }
                     if (note.content.isNotBlank()) {
@@ -344,7 +334,7 @@ fun NoteItem(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 lineHeight = 20.sp,
-                                modifier = contentSharedModifier
+                                modifier = Modifier
                             )
                         }
                     }
