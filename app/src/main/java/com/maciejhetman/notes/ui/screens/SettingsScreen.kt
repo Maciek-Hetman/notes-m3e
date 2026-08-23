@@ -43,6 +43,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.maciejhetman.notes.data.EditorLineSpacing
+import com.maciejhetman.notes.data.NO_LANGUAGES_SENTINEL
+import com.maciejhetman.notes.data.isAllLanguagesEnabled
+import com.maciejhetman.notes.data.isNoLanguagesEnabled
 import com.maciejhetman.notes.data.IndentGuideColor
 import com.maciejhetman.notes.data.IndentGuideStyle
 import com.maciejhetman.notes.data.LineNumberMode
@@ -221,10 +224,13 @@ fun SettingsScreen(
 
                     SettingsDivider()
 
-                    val countLabel = if (settings.enabledLanguages.isEmpty()) {
-                        "All languages (${SUPPORTED_LANGUAGES.size})"
-                    } else {
-                        "${settings.enabledLanguages.size} of ${SUPPORTED_LANGUAGES.size} enabled"
+                    val countLabel = when {
+                        settings.enabledLanguages.isAllLanguagesEnabled() ->
+                            "All languages (${SUPPORTED_LANGUAGES.size})"
+                        settings.enabledLanguages.isNoLanguagesEnabled() ->
+                            "None"
+                        else ->
+                            "${settings.enabledLanguages.size} of ${SUPPORTED_LANGUAGES.size} enabled"
                     }
                     SettingsClickableRow(
                         title = "Visible programming languages",
@@ -310,8 +316,11 @@ fun SettingsScreen(
 
     if (showLanguageDialog) {
         val currentSelected = remember(settings.enabledLanguages) {
-            if (settings.enabledLanguages.isEmpty()) SUPPORTED_LANGUAGES.map { it.tag }.toSet()
-            else settings.enabledLanguages
+            when {
+                settings.enabledLanguages.isAllLanguagesEnabled() -> SUPPORTED_LANGUAGES.map { it.tag }.toSet()
+                settings.enabledLanguages.isNoLanguagesEnabled() -> emptySet()
+                else -> settings.enabledLanguages
+            }
         }
         var tempSelected by remember { mutableStateOf(currentSelected) }
 
@@ -339,7 +348,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.secondary,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
-                                .clickable { tempSelected = setOf("") }
+                                .clickable { tempSelected = emptySet() }
                                 .padding(4.dp)
                         )
                     }
@@ -376,7 +385,12 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.setEnabledLanguages(tempSelected)
+                    val persisted = when {
+                        tempSelected.isEmpty() -> setOf(NO_LANGUAGES_SENTINEL)
+                        tempSelected.size == SUPPORTED_LANGUAGES.size -> emptySet()
+                        else -> tempSelected
+                    }
+                    viewModel.setEnabledLanguages(persisted)
                     showLanguageDialog = false
                 }) {
                     Text("Save", fontWeight = FontWeight.Bold)

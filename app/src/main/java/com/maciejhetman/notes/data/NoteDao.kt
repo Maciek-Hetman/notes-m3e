@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NoteDao {
-    @Query("SELECT * FROM notes ORDER BY modifiedAt DESC")
+    @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY modifiedAt DESC")
     fun getAllNotes(): Flow<List<Note>>
 
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL AND folderId IS :folderId ORDER BY modifiedAt DESC")
@@ -37,6 +37,24 @@ interface NoteDao {
     @Query("UPDATE notes SET deletedAt = NULL WHERE id = :id")
     suspend fun restoreFromTrash(id: Long)
 
-    @Query("SELECT * FROM notes WHERE deletedAt IS NULL AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') ORDER BY modifiedAt DESC")
+    @Query(
+        """
+        SELECT * FROM notes
+        WHERE deletedAt IS NULL
+          AND (title LIKE '%' || :query || '%' ESCAPE '\' OR content LIKE '%' || :query || '%' ESCAPE '\')
+        ORDER BY modifiedAt DESC
+        """
+    )
     fun searchNotes(query: String): Flow<List<Note>>
+
+    @Query(
+        """
+        SELECT * FROM notes
+        WHERE deletedAt IS NULL
+          AND folderId IS :folderId
+          AND (title LIKE '%' || :query || '%' ESCAPE '\' OR content LIKE '%' || :query || '%' ESCAPE '\')
+        ORDER BY modifiedAt DESC
+        """
+    )
+    fun searchNotesInFolder(query: String, folderId: Long?): Flow<List<Note>>
 }

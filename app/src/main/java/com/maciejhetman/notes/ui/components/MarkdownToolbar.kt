@@ -22,7 +22,9 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatUnderlined
+import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.FilledTonalIconButton
@@ -169,6 +171,7 @@ fun MarkdownToolbar(
                         ToolbarIconButton(Icons.Default.FormatBold, "Bold") { onInsert("bold"); state = ToolbarState.Main }
                         ToolbarIconButton(Icons.Default.FormatItalic, "Italic") { onInsert("italic"); state = ToolbarState.Main }
                         ToolbarIconButton(Icons.Default.FormatUnderlined, "Underline") { onInsert("underline"); state = ToolbarState.Main }
+                        ToolbarIconButton(Icons.Default.Code, "Inline Code") { onInsert("code"); state = ToolbarState.Main }
                     }
                     ToolbarState.Lists -> {
                         ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state = ToolbarState.Main }
@@ -176,6 +179,8 @@ fun MarkdownToolbar(
                         ToolbarIconButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Bullet") { onInsert("ul"); state = ToolbarState.Main }
                         ToolbarIconButton(Icons.Default.FormatListNumbered, "Numbered") { onInsert("ol"); state = ToolbarState.Main }
                         ToolbarIconButton(Icons.Default.Checklist, "Todo") { onInsert("todo"); state = ToolbarState.Main }
+                        ToolbarIconButton(Icons.Default.FormatQuote, "Quote") { onInsert("quote"); state = ToolbarState.Main }
+                        ToolbarIconButton(Icons.Default.HorizontalRule, "Horizontal Rule") { onInsert("hr"); state = ToolbarState.Main }
                     }
                 }
             }

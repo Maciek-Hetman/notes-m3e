@@ -12,6 +12,7 @@ import com.maciejhetman.notes.data.NoteFontFamily
 import com.maciejhetman.notes.data.SettingsRepository
 import com.maciejhetman.notes.data.SyntaxTheme
 import com.maciejhetman.notes.data.ThemeMode
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -31,6 +32,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setThemeMode(mode)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set theme mode", e)
             }
@@ -41,6 +44,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setThemeColor(color)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set theme color", e)
             }
@@ -51,6 +56,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setDynamicColor(enabled)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set dynamic color", e)
             }
@@ -61,6 +68,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setAmoledBlack(enabled)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set amoled black", e)
             }
@@ -71,6 +80,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setLineNumberMode(mode)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set line number mode", e)
             }
@@ -81,6 +92,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setFontSizeScale(scale)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set font size scale", e)
             }
@@ -91,6 +104,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setFontFamily(family)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set font family", e)
             }
@@ -101,6 +116,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setSyntaxTheme(theme)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set syntax theme", e)
             }
@@ -111,6 +128,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setLineSpacing(spacing)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set line spacing", e)
             }
@@ -121,6 +140,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setEnabledLanguages(languages)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set enabled languages", e)
             }
@@ -131,6 +152,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setTextIndentDepthSp(depthSp)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set text indent depth", e)
             }
@@ -141,6 +164,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setTextIndentColor(color)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set text indent color", e)
             }
@@ -151,6 +176,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setTextIndentStyle(style)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set text indent style", e)
             }
@@ -161,6 +188,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setCodeIndentDepthSp(depthSp)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set code indent depth", e)
             }
@@ -171,6 +200,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setCodeIndentColor(color)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set code indent color", e)
             }
@@ -181,6 +212,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 repository.setCodeIndentStyle(style)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set code indent style", e)
             }

@@ -38,7 +38,7 @@ import com.maciejhetman.notes.ui.util.applyListContinuation
 import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.util.toggle
 
-private val TODO_MARKER_REGEX = Regex("- \\[[ xX]\\] ")
+private val TODO_MARKER_REGEX = Regex("[-*] \\[[ xX]\\] ")
 
 /**
  * The note's content field: a [BasicTextField] with live-markdown [VisualTransformation],

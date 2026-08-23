@@ -14,7 +14,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.maciejhetman.notes.ui.screens.FENCED_CODE_REGEX
 import com.maciejhetman.notes.ui.util.IMAGE_MARKDOWN_REGEX
 
-private val TODO_LINE_REGEX = Regex("(?m)^\\s*- \\[[ xX]\\] ")
+private val TODO_LINE_REGEX = Regex("(?m)^\\s*[-*] \\[[ xX]\\] ")
 
 /**
  * State holder for the note content editor. Hoisted into [com.maciejhetman.notes.ui.screens.NoteDetailScreen]

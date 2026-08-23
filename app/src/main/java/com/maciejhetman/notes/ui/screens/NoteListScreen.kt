@@ -1,6 +1,8 @@
 package com.maciejhetman.notes.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +64,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,9 +72,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
-import android.widget.Toast
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -111,7 +118,7 @@ import com.maciejhetman.notes.ui.viewmodel.ListSection
 fun NoteListScreen(
     viewModel: NoteListViewModel,
     onNoteClick: (Note) -> Unit,
-    onAddNoteClick: () -> Unit,
+    onAddNoteClick: (initialContent: String?) -> Unit,
     onFolderClick: (Long) -> Unit,
     onSettingsClick: () -> Unit,
     onBack: () -> Unit
@@ -129,7 +136,9 @@ fun NoteListScreen(
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var isFabExpanded by remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    val folderNameFocusRequester = remember { FocusRequester() }
+
+    BackHandler(enabled = isFabExpanded) { isFabExpanded = false }
 
     val motionScheme = MaterialTheme.motionScheme
     val itemFadeInSpec = motionScheme.fastEffectsSpec<Float>()
@@ -215,7 +224,12 @@ fun NoteListScreen(
                                         onSearch = { },
                                         expanded = false,
                                         onExpandedChange = { },
-                                        placeholder = { Text("Search notes") },
+                                        placeholder = {
+                                            Text(
+                                                if (viewModel.isInFolder) "Search in this folder"
+                                                else "Search notes"
+                                            )
+                                        },
                                         leadingIcon = {
                                             Icon(Icons.Default.Search, contentDescription = null)
                                         },
@@ -340,21 +354,22 @@ fun NoteListScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                         },
-                        trailingIcon = if (uiState.dateRangeFilter != null) {
-                            {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Clear date filter",
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clickable {
-                                            haptics.tap()
-                                            viewModel.onClearDateRangeFilter()
-                                        }
-                                )
-                            }
-                        } else null
                     )
+                    if (uiState.dateRangeFilter != null) {
+                        IconButton(
+                            onClick = {
+                                haptics.tap()
+                                viewModel.onClearDateRangeFilter()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear date filter",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
             },
@@ -376,10 +391,10 @@ fun NoteListScreen(
                             ExtendedFloatingActionButton(
                                 onClick = {
                                     isFabExpanded = false
-                                    Toast.makeText(context, "To-Do lists coming soon!", Toast.LENGTH_SHORT).show()
+                                    onAddNoteClick("- [ ] ")
                                 },
-                                icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = null) },
-                                text = { Text("To-Do list") },
+                                icon = { Icon(Icons.Default.Checklist, contentDescription = null) },
+                                text = { Text("To-do note") },
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer
                             )
                             ExtendedFloatingActionButton(
@@ -394,7 +409,7 @@ fun NoteListScreen(
                             ExtendedFloatingActionButton(
                                 onClick = {
                                     isFabExpanded = false
-                                    onAddNoteClick()
+                                    onAddNoteClick(null)
                                 },
                                 icon = { Icon(Icons.Default.NoteAdd, contentDescription = null) },
                                 text = { Text("Note") },
@@ -452,6 +467,11 @@ fun NoteListScreen(
                         uiState.section == ListSection.TODOS && showSectionEmptyState ->
                             "Notes containing to-do checkboxes will appear here"
                         else -> null
+                    },
+                    icon = when {
+                        isInTrash && showSectionEmptyState -> Icons.Default.DeleteOutline
+                        uiState.section == ListSection.TODOS && showSectionEmptyState -> Icons.Default.Checklist
+                        else -> Icons.Default.NoteAlt
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -535,6 +555,14 @@ fun NoteListScreen(
                         }
                     }
                 }
+            }
+            if (isFabExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.32f))
+                        .clickable { isFabExpanded = false }
+                )
             }
         }
         }
@@ -650,15 +678,32 @@ fun NoteListScreen(
     }
 
     if (showCreateFolderDialog) {
+        LaunchedEffect(Unit) {
+            folderNameFocusRequester.requestFocus()
+        }
         AlertDialog(
-            onDismissRequest = { showCreateFolderDialog = false },
+            onDismissRequest = {
+                showCreateFolderDialog = false
+                newFolderName = ""
+            },
             title = { Text("Create Folder") },
             text = {
                 OutlinedTextField(
                     value = newFolderName,
                     onValueChange = { newFolderName = it },
                     label = { Text("Folder Name") },
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (newFolderName.isNotBlank()) {
+                                viewModel.createFolder(newFolderName.trim())
+                                showCreateFolderDialog = false
+                                newFolderName = ""
+                            }
+                        }
+                    ),
+                    modifier = Modifier.focusRequester(folderNameFocusRequester)
                 )
             },
             confirmButton = {

@@ -7,12 +7,15 @@ import com.maciejhetman.notes.data.Folder
 import com.maciejhetman.notes.data.FolderRepository
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.data.NoteRepository
+import com.maciejhetman.notes.ui.util.deleteInternalImagesReferencedBy
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -46,10 +49,20 @@ class NoteListViewModel(
         sectionAndQuery.flatMapLatest { (section, query) ->
             when (section) {
                 ListSection.DELETED -> repository.getDeletedNotesStream()
-                else -> if (query.isEmpty()) {
-                    repository.getNotesStreamByFolderId(folderId)
-                } else {
-                    repository.searchNotes(query)
+                ListSection.TODOS -> when {
+                    query.isNotEmpty() && folderId != null ->
+                        repository.searchNotesInFolder(query, folderId)
+                    query.isNotEmpty() ->
+                        repository.searchNotes(query)
+                    folderId != null ->
+                        repository.getNotesStreamByFolderId(folderId)
+                    else ->
+                        repository.getAllNotesStream()
+                }
+                ListSection.NOTES -> when {
+                    query.isEmpty() -> repository.getNotesStreamByFolderId(folderId)
+                    folderId != null -> repository.searchNotesInFolder(query, folderId)
+                    else -> repository.searchNotes(query)
                 }
             }
         },
@@ -112,6 +125,8 @@ class NoteListViewModel(
         viewModelScope.launch {
             try {
                 repository.moveToTrash(note)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to move note to trash", e)
             }
@@ -122,6 +137,8 @@ class NoteListViewModel(
         viewModelScope.launch {
             try {
                 repository.restoreFromTrash(note)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to restore note", e)
             }
@@ -131,7 +148,10 @@ class NoteListViewModel(
     fun permanentlyDeleteNote(note: Note) {
         viewModelScope.launch {
             try {
+                deleteInternalImagesReferencedBy(note.content)
                 repository.deleteNote(note)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to permanently delete note", e)
             }
@@ -142,6 +162,8 @@ class NoteListViewModel(
         viewModelScope.launch {
             try {
                 folderRepository.insertFolder(Folder(name = name, parentFolderId = folderId))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create folder", e)
             }
@@ -151,11 +173,29 @@ class NoteListViewModel(
     fun deleteFolder(folder: Folder) {
         viewModelScope.launch {
             try {
+                val folderIds = collectFolderIds(folder.id)
+                val trashed = repository.getDeletedNotesStream().first()
+                    .filter { it.folderId in folderIds }
+                val active = folderIds.flatMap { id ->
+                    repository.getNotesStreamByFolderId(id).first()
+                }
+                (active + trashed).forEach { deleteInternalImagesReferencedBy(it.content) }
                 folderRepository.deleteFolder(folder)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete folder", e)
             }
         }
+    }
+
+    private suspend fun collectFolderIds(rootId: Long): Set<Long> {
+        val ids = mutableSetOf(rootId)
+        val children = folderRepository.getSubfoldersStream(rootId).first()
+        for (child in children) {
+            ids += collectFolderIds(child.id)
+        }
+        return ids
     }
 
     companion object {

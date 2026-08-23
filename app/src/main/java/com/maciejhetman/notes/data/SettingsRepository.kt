@@ -81,6 +81,14 @@ data class AppSettings(
     val codeIndentStyle: IndentGuideStyle = IndentGuideStyle.SOLID
 )
 
+/** Stored when the user explicitly disables every syntax language. Empty set still means "all". */
+const val NO_LANGUAGES_SENTINEL = "__none__"
+
+fun Set<String>.isAllLanguagesEnabled(): Boolean = isEmpty()
+
+fun Set<String>.isNoLanguagesEnabled(): Boolean =
+    contains(NO_LANGUAGES_SENTINEL) || this == setOf("")
+
 private val Context.settingsDataStore by preferencesDataStore(name = "app_settings")
 
 class SettingsRepository(private val context: Context) {

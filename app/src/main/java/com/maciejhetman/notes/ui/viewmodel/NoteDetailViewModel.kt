@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maciejhetman.notes.data.Note
 import com.maciejhetman.notes.data.NoteRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +30,13 @@ class NoteDetailViewModel(
         NoteDetailUiState(
             id = noteId,
             folderId = folderId,
+            content = initialContent.orEmpty(),
             isNew = noteId == null,
+            savedState = if (!initialContent.isNullOrBlank() && noteId == null) {
+                SavedState.Unsaved
+            } else {
+                SavedState.Idle
+            },
             initialContent = initialContent
         )
     )
@@ -42,17 +49,29 @@ class NoteDetailViewModel(
         if (noteId != null) {
             viewModelScope.launch {
                 val note = repository.getNoteStream(noteId).filterNotNull().first()
-                _uiState.update {
-                    it.copy(
-                        id = note.id,
-                        folderId = note.folderId,
-                        title = note.title,
-                        content = note.content,
-                        createdAt = note.createdAt,
-                        modifiedAt = note.modifiedAt,
-                        isNew = false,
-                        savedState = SavedState.Saved
-                    )
+                _uiState.update { current ->
+                    // Typing that landed before Room answered must not be overwritten.
+                    if (current.savedState == SavedState.Unsaved) {
+                        current.copy(
+                            id = note.id,
+                            folderId = note.folderId,
+                            createdAt = note.createdAt,
+                            deletedAt = note.deletedAt,
+                            isNew = false
+                        )
+                    } else {
+                        current.copy(
+                            id = note.id,
+                            folderId = note.folderId,
+                            title = note.title,
+                            content = note.content,
+                            createdAt = note.createdAt,
+                            modifiedAt = note.modifiedAt,
+                            deletedAt = note.deletedAt,
+                            isNew = false,
+                            savedState = SavedState.Saved
+                        )
+                    }
                 }
             }
         }
@@ -72,9 +91,7 @@ class NoteDetailViewModel(
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
             delay(1500.milliseconds)
-            if (performSave()) {
-                _uiState.update { it.copy(savedState = SavedState.Saved) }
-            }
+            saveAndPublish()
         }
     }
 
@@ -84,24 +101,42 @@ class NoteDetailViewModel(
         // entirely so simply navigating into a note never bumps its modified timestamp.
         if (_uiState.value.savedState != SavedState.Unsaved) return
         viewModelScope.launch {
-            if (performSave()) {
-                _uiState.update { it.copy(savedState = SavedState.Saved) }
-            }
+            saveAndPublish()
         }
     }
 
-    private suspend fun performSave(): Boolean = saveMutex.withLock {
-        val state = _uiState.value
-        // Don't save truly empty new notes
-        if (state.isNew && state.title.isBlank() && state.content.isBlank()) return false
+    private suspend fun saveAndPublish() {
+        val snapshot = _uiState.value
+        if (snapshot.savedState != SavedState.Unsaved) return
+        if (snapshot.isNew && snapshot.title.isBlank() && snapshot.content.isBlank()) return
+        _uiState.update { if (it.savedState == SavedState.Unsaved) it.copy(savedState = SavedState.Saving) else it }
+        val modifiedAt = performSave(snapshot)
+        if (modifiedAt != null) {
+            _uiState.update { current ->
+                if (current.title == snapshot.title && current.content == snapshot.content) {
+                    current.copy(savedState = SavedState.Saved, modifiedAt = modifiedAt)
+                } else {
+                    current.copy(modifiedAt = modifiedAt)
+                }
+            }
+        } else if (_uiState.value.savedState == SavedState.Saving) {
+            _uiState.update { it.copy(savedState = SavedState.Error) }
+        }
+    }
 
+    private suspend fun performSave(state: NoteDetailUiState): Long? = saveMutex.withLock {
+        // Don't save truly empty new notes
+        if (state.isNew && state.title.isBlank() && state.content.isBlank()) return null
+
+        val modifiedAt = System.currentTimeMillis()
         val note = Note(
             id = state.id ?: 0,
             folderId = state.folderId,
             title = state.title,
             content = state.content,
             createdAt = state.createdAt,
-            modifiedAt = System.currentTimeMillis()
+            modifiedAt = modifiedAt,
+            deletedAt = state.deletedAt
         )
         return try {
             if (state.isNew) {
@@ -110,10 +145,12 @@ class NoteDetailViewModel(
             } else {
                 repository.updateNote(note)
             }
-            true
+            modifiedAt
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save note", e)
-            false
+            null
         }
     }
 
@@ -122,7 +159,7 @@ class NoteDetailViewModel(
     }
 }
 
-enum class SavedState { Saved, Unsaved, Idle }
+enum class SavedState { Saved, Unsaved, Idle, Saving, Error }
 
 data class NoteDetailUiState(
     val id: Long? = null,
@@ -131,6 +168,7 @@ data class NoteDetailUiState(
     val content: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val modifiedAt: Long = System.currentTimeMillis(),
+    val deletedAt: Long? = null,
     val isNew: Boolean = true,
     val savedState: SavedState = SavedState.Idle,
     /**

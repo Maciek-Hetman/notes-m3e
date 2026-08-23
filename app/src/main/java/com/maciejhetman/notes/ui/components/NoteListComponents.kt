@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -407,32 +408,28 @@ fun NoteItem(
     val firstImagePath = remember(note.content) {
         IMAGE_MARKDOWN_REGEX.find(note.content)?.groupValues?.getOrNull(1)
     }
-    var menuExpanded by remember { mutableStateOf(false) }
 
     val shape = RoundedCornerShape(16.dp)
 
     val appSettings = LocalAppSettings.current
     val fontFamily = appSettings.fontFamily.toComposeFontFamily()
 
-    Box(
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
         modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.longPress()
+                    onDeleteClick()
+                }
+            )
     ) {
-        Card(
-            shape = shape,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = {
-                        haptics.longPress()
-                        menuExpanded = true
-                    }
-                )
-        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -494,34 +491,13 @@ fun NoteItem(
                     ) {
                         androidx.compose.foundation.Image(
                             painter = coil.compose.rememberAsyncImagePainter(model = firstImagePath),
-                            contentDescription = null,
+                            contentDescription = "Note image",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
                     }
                 }
             }
-        }
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text("Delete note") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                onClick = {
-                    haptics.tap()
-                    menuExpanded = false
-                    onDeleteClick()
-                }
-            )
-        }
     }
 }
 
@@ -531,7 +507,8 @@ fun EmptyNotesPlaceholder(
     isSearching: Boolean,
     modifier: Modifier = Modifier,
     title: String? = null,
-    message: String? = null
+    message: String? = null,
+    icon: ImageVector? = null
 ) {
     Column(
         modifier = modifier,
@@ -548,8 +525,8 @@ fun EmptyNotesPlaceholder(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (title == null) Icons.Default.NoteAlt else Icons.Default.DeleteOutline,
-                contentDescription = null,
+                imageVector = icon ?: Icons.Default.NoteAlt,
+                contentDescription = title ?: if (isSearching) "No notes found" else "Empty notes",
                 modifier = Modifier.size(52.dp),
                 tint = MaterialTheme.colorScheme.primary
             )

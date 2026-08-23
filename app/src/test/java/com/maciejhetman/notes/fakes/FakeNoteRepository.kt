@@ -26,7 +26,14 @@ class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepositor
     var lastSearchQuery: String? = null
         private set
 
-    override fun getAllNotesStream(): Flow<List<Note>> = notes
+    var lastSearchFolderId: Long? = null
+        private set
+
+    var didSearchInFolder: Boolean = false
+        private set
+
+    override fun getAllNotesStream(): Flow<List<Note>> =
+        notes.map { list -> list.filter { it.deletedAt == null } }
 
     override fun getDeletedNotesStream(): Flow<List<Note>> =
         notes.map { list -> list.filter { it.deletedAt != null } }
@@ -75,13 +82,23 @@ class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepositor
 
     override fun searchNotes(query: String): Flow<List<Note>> {
         lastSearchQuery = query
+        didSearchInFolder = false
+        lastSearchFolderId = null
+        return notes.map { list -> list.filter { it.matchesSearch(query) } }
+    }
+
+    override fun searchNotesInFolder(query: String, folderId: Long?): Flow<List<Note>> {
+        lastSearchQuery = query
+        lastSearchFolderId = folderId
+        didSearchInFolder = true
         return notes.map { list ->
-            list.filter {
-                it.deletedAt == null && (
-                    it.title.contains(query, ignoreCase = true) ||
-                        it.content.contains(query, ignoreCase = true)
-                    )
-            }
+            list.filter { it.folderId == folderId && it.matchesSearch(query) }
         }
     }
+
+    private fun Note.matchesSearch(query: String): Boolean =
+        deletedAt == null && (
+            title.contains(query, ignoreCase = true) ||
+                content.contains(query, ignoreCase = true)
+            )
 }

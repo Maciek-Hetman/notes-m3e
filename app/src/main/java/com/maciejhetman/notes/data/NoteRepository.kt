@@ -10,6 +10,9 @@ interface NoteRepository {
     suspend fun updateNote(note: Note)
     fun searchNotes(query: String): Flow<List<Note>>
 
+    /** Search active notes that belong to a specific folder (including the root when [folderId] is null). */
+    fun searchNotesInFolder(query: String, folderId: Long?): Flow<List<Note>>
+
     /**
      * Retrieve all notes from the given data source that belong to a specific folder.
      */

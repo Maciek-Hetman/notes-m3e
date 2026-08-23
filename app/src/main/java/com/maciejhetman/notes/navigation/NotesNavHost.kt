@@ -92,12 +92,14 @@ fun NotesNavHost() {
                                 Routes.NoteDetail(
                                     note.id,
                                     route.folderId,
-                                    initialContent = note.content
+                                    initialContent = note.content.takeIf { it.length <= 100_000 }
                                 )
                             )
                         },
-                        onAddNoteClick = {
-                            navController.navigate(Routes.NoteDetail(null, route.folderId))
+                        onAddNoteClick = { initialContent ->
+                            navController.navigate(
+                                Routes.NoteDetail(null, route.folderId, initialContent = initialContent)
+                            )
                         },
                         onFolderClick = { folderId ->
                             navController.navigate(Routes.NoteList(folderId))

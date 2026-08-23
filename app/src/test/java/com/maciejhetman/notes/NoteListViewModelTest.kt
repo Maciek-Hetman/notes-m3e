@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -31,8 +32,16 @@ class NoteListViewModelTest {
         title: String = "note$id",
         content: String = "",
         createdAt: Long = 0L,
-        modifiedAt: Long = 0L
-    ) = Note(id = id, title = title, content = content, createdAt = createdAt, modifiedAt = modifiedAt)
+        modifiedAt: Long = 0L,
+        folderId: Long? = null
+    ) = Note(
+        id = id,
+        folderId = folderId,
+        title = title,
+        content = content,
+        createdAt = createdAt,
+        modifiedAt = modifiedAt
+    )
 
     @Test
     fun `sort comparators order notes as expected`() {
@@ -222,4 +231,45 @@ class NoteListViewModelTest {
             advanceUntilIdle()
             assertEquals(listOf(2L), viewModel.notesUiState.value.notes.map { it.id })
         }
+
+    @Test
+    fun `search inside a folder only returns matching notes from that folder`() =
+        runTest(testDispatcher) {
+            val repository = FakeNoteRepository(
+                listOf(
+                    note(1, title = "milk in folder", folderId = 10L),
+                    note(2, title = "milk at root", folderId = null)
+                )
+            )
+            val viewModel = NoteListViewModel(repository, FakeFolderRepository(), folderId = 10L)
+            backgroundScope.launch { viewModel.notesUiState.collect { } }
+            advanceUntilIdle()
+
+            viewModel.onSearchQueryChange("milk")
+            advanceUntilIdle()
+
+            assertEquals("milk", repository.lastSearchQuery)
+            assertTrue(repository.didSearchInFolder)
+            assertEquals(10L, repository.lastSearchFolderId)
+            assertEquals(listOf(1L), viewModel.notesUiState.value.notes.map { it.id })
+        }
+
+    @Test
+    fun `to-do section at root includes notes that live in folders`() = runTest(testDispatcher) {
+        val repository = FakeNoteRepository(
+            listOf(
+                note(1, title = "root todo", content = "- [ ] milk"),
+                note(2, title = "nested todo", content = "* [ ] eggs", folderId = 4L),
+                note(3, title = "plain nested", content = "hello", folderId = 4L)
+            )
+        )
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+
+        viewModel.onSectionChange(ListSection.TODOS)
+        advanceUntilIdle()
+
+        assertEquals(setOf(1L, 2L), viewModel.notesUiState.value.notes.map { it.id }.toSet())
+    }
 }

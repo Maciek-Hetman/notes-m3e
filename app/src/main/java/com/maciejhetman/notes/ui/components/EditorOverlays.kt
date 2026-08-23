@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.maciejhetman.notes.data.AppSettings
+import com.maciejhetman.notes.data.isAllLanguagesEnabled
+import com.maciejhetman.notes.data.isNoLanguagesEnabled
 import com.maciejhetman.notes.data.IndentGuideStyle
 import com.maciejhetman.notes.data.LineNumberMode
 import com.maciejhetman.notes.ui.screens.SUPPORTED_LANGUAGES
@@ -62,6 +64,7 @@ import com.maciejhetman.notes.ui.screens.computeIndentGuides
 import com.maciejhetman.notes.ui.screens.computeNumberedLines
 import com.maciejhetman.notes.ui.screens.resolve
 import com.maciejhetman.notes.ui.util.tap
+import com.maciejhetman.notes.ui.util.deleteInternalImage
 
 /**
  * Whole-block background containers for fenced code blocks, rendered *behind* the text
@@ -283,7 +286,8 @@ private fun TodoCheckboxOverlays(
     for (match in state.cachedTodoMatches) {
         val isChecked = match.value.contains("x", ignoreCase = true)
         // We want the bounding box of the '-' character to align perfectly with lists
-        val boxStartOffset = match.range.first + match.value.indexOf('-')
+        val markerIndex = match.value.indexOfFirst { it == '-' || it == '*' }
+        val boxStartOffset = match.range.first + markerIndex.coerceAtLeast(0)
 
         val safeOffset = boxStartOffset.coerceIn(0, (text.length - 1).coerceAtLeast(0))
 
@@ -377,7 +381,13 @@ private fun LanguageSelectorMenu(
 
     val availableLangs = remember(enabledLanguages, trimmedLang) {
         val list = SUPPORTED_LANGUAGES.filter { lang ->
-            enabledLanguages.isEmpty() || enabledLanguages.contains(lang.tag) || lang.tag.equals(trimmedLang, ignoreCase = true)
+            when {
+                enabledLanguages.isNoLanguagesEnabled() ->
+                    lang.tag.isEmpty() || lang.tag.equals(trimmedLang, ignoreCase = true)
+                enabledLanguages.isAllLanguagesEnabled() -> true
+                else ->
+                    enabledLanguages.contains(lang.tag) || lang.tag.equals(trimmedLang, ignoreCase = true)
+            }
         }
         if (list.isEmpty()) SUPPORTED_LANGUAGES else list
     }
@@ -575,13 +585,14 @@ private fun InlineImageOverlay(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
-                    .size(18.dp)
-                    .background(Color.Black.copy(alpha = 0.4f), shape = CircleShape)
+                    .size(36.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), shape = CircleShape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) {
                         haptics.tap()
+                        deleteInternalImage(path)
                         val pattern = "!\\[.*?\\]\\(${Regex.escape(path)}\\)"
                         val newText = state.contentFieldValue.text.replace(Regex(pattern), "")
                         state.contentFieldValue = TextFieldValue(newText, TextRange(newText.length))
@@ -593,7 +604,7 @@ private fun InlineImageOverlay(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Remove photo",
                     tint = Color.White,
-                    modifier = Modifier.size(10.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

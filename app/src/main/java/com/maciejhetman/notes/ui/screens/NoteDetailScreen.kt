@@ -122,11 +122,15 @@ fun NoteDetailScreen(
     val dateFormatter = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()) }
     val timeFormatter = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()) }
     val createdStr = remember(uiState.createdAt) { dateFormatter.format(java.util.Date(uiState.createdAt)) }
+    val modifiedDateStr = remember(uiState.modifiedAt) { dateFormatter.format(java.util.Date(uiState.modifiedAt)) }
     val modifiedStr = remember(uiState.modifiedAt) { timeFormatter.format(java.util.Date(uiState.modifiedAt)) }
 
     // Sync with Room on first load (existing note)
-    LaunchedEffect(uiState.content) {
-        if (editorState.contentFieldValue.text != uiState.content) {
+    LaunchedEffect(uiState.content, uiState.savedState) {
+        if (uiState.savedState != SavedState.Unsaved &&
+            uiState.savedState != SavedState.Saving &&
+            editorState.contentFieldValue.text != uiState.content
+        ) {
             editorState.contentFieldValue = TextFieldValue(uiState.content, TextRange(uiState.content.length))
         }
     }
@@ -290,10 +294,8 @@ fun NoteDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
         ) {
-            // ── Top bar (scrolls away with the rest of the content) ────────
+            // ── Top bar (stays visible while the note scrolls) ────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -306,7 +308,9 @@ fun NoteDetailScreen(
                 }
                 Spacer(Modifier.width(4.dp))
                 AnimatedVisibility(
-                    visible = showSavedIndicator,
+                    visible = showSavedIndicator ||
+                        uiState.savedState == SavedState.Saving ||
+                        uiState.savedState == SavedState.Error,
                     enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
                         slideInVertically(
                             animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
@@ -317,13 +321,32 @@ fun NoteDetailScreen(
                         ) { -it }
                 ) {
                     Text(
-                        "Saved",
+                        text = when (uiState.savedState) {
+                            SavedState.Saving -> "Saving…"
+                            SavedState.Error -> "Couldn't save — tap to retry"
+                            else -> "Saved"
+                        },
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (uiState.savedState == SavedState.Error) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        modifier = if (uiState.savedState == SavedState.Error) {
+                            Modifier.clickable { viewModel.saveNote() }
+                        } else {
+                            Modifier
+                        }
                     )
                 }
             }
 
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+            ) {
             // ── Title ─────────────────────────────────────────────────────
             BasicTextField(
                 value = uiState.title,
@@ -361,7 +384,7 @@ fun NoteDetailScreen(
             )
 
             Text(
-                text = "Created $createdStr  •  Modified $modifiedStr",
+                text = "Created $createdStr  •  Modified $modifiedDateStr, $modifiedStr",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
@@ -404,6 +427,7 @@ fun NoteDetailScreen(
             )
 
             Spacer(Modifier.height(80.dp))
+            }
         }
     }
 }

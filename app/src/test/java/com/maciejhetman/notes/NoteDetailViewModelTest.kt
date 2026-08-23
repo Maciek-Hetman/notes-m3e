@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -129,5 +130,43 @@ class NoteDetailViewModelTest {
         advanceUntilIdle()
         assertTrue(repository.insertedNotes.isEmpty())
         assertTrue(repository.updatedNotes.isEmpty())
+    }
+
+    @Test
+    fun `room load does not overwrite edits that landed first`() = runTest(testDispatcher) {
+        val existing = Note(id = 9L, title = "Old title", content = "Old content", createdAt = 1_000L)
+        repository = FakeNoteRepository(listOf(existing))
+        val viewModel = NoteDetailViewModel(repository, noteId = 9L, initialContent = "Old content")
+
+        viewModel.updateTitle("Typed immediately")
+        viewModel.updateContent("New body")
+        // Run the Room load only — don't advance the 1.5s autosave delay.
+        runCurrent()
+
+        assertEquals("Typed immediately", viewModel.uiState.value.title)
+        assertEquals("New body", viewModel.uiState.value.content)
+        assertEquals(SavedState.Unsaved, viewModel.uiState.value.savedState)
+    }
+
+    @Test
+    fun `saving an existing note refreshes modifiedAt`() = runTest(testDispatcher) {
+        val existing = Note(
+            id = 4L,
+            title = "Keep",
+            content = "Body",
+            createdAt = 500L,
+            modifiedAt = 500L
+        )
+        repository = FakeNoteRepository(listOf(existing))
+        val viewModel = NoteDetailViewModel(repository, noteId = 4L)
+        advanceUntilIdle()
+
+        viewModel.updateContent("Body changed")
+        advanceTimeBy(1_500 + 1)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.modifiedAt > 500L)
+        assertEquals(viewModel.uiState.value.modifiedAt, repository.updatedNotes.single().modifiedAt)
+        assertEquals(SavedState.Saved, viewModel.uiState.value.savedState)
     }
 }

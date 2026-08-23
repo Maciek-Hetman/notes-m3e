@@ -21,5 +21,13 @@ class OfflineNoteRepository(private val noteDao: NoteDao) : NoteRepository {
 
     override suspend fun restoreFromTrash(note: Note) = noteDao.restoreFromTrash(note.id)
 
-    override fun searchNotes(query: String): Flow<List<Note>> = noteDao.searchNotes(query)
+    override fun searchNotes(query: String): Flow<List<Note>> =
+        noteDao.searchNotes(escapeLikeQuery(query))
+
+    override fun searchNotesInFolder(query: String, folderId: Long?): Flow<List<Note>> =
+        noteDao.searchNotesInFolder(escapeLikeQuery(query), folderId)
 }
+
+/** Escapes `\`, `%`, and `_` so user search text is matched literally by SQLite LIKE. */
+internal fun escapeLikeQuery(query: String): String =
+    query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
