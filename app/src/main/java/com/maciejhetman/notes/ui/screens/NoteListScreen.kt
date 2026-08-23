@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,15 +21,19 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NoteAdd
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +43,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
@@ -47,6 +56,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import android.widget.Toast
+import androidx.compose.ui.zIndex
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -87,7 +98,9 @@ import com.maciejhetman.notes.ui.components.DateRangeFilterDialog
 import com.maciejhetman.notes.ui.components.EmptyNotesPlaceholder
 import com.maciejhetman.notes.ui.components.FolderItem
 import com.maciejhetman.notes.ui.components.SwipeableNoteItem
+import com.maciejhetman.notes.ui.components.TrashNoteItem
 import com.maciejhetman.notes.ui.components.formatDateRange
+import com.maciejhetman.notes.ui.viewmodel.ListSection
 
 // SearchBar/InputField(query, expanded, onExpandedChange, ...) are deprecated in favor of the
 // SearchBarState + TextFieldState slot API, but this bar never expands into a full-screen/docked
@@ -109,6 +122,7 @@ fun NoteListScreen(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
+    var noteToPurge by remember { mutableStateOf<Note?>(null) }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var showDateRangePicker by remember { mutableStateOf(false) }
@@ -125,73 +139,135 @@ fun NoteListScreen(
     val spatialSpec = motionScheme.fastSpatialSpec<Float>()
     val slideSpec = motionScheme.fastSpatialSpec<IntOffset>()
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            Column {
-                SearchBar(
-                    inputField = {
-                        SearchBarDefaults.InputField(
-                            query = searchQuery,
-                            onQueryChange = { viewModel.onSearchQueryChange(it) },
-                            onSearch = { },
-                            expanded = false,
-                            onExpandedChange = { },
-                            placeholder = {
-                                Text(
-                                    "Search notes…",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+    val isInTrash = uiState.section == ListSection.DELETED
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text(
+                    text = "Notes",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp)
+                )
+                ListSection.entries.forEach { section ->
+                    NavigationDrawerItem(
+                        label = {
+                            Text(
+                                text = section.label,
+                                fontWeight = if (section == uiState.section) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        selected = section == uiState.section,
+                        onClick = {
+                            haptics.tap()
+                            viewModel.onSectionChange(section)
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = when (section) {
+                                    ListSection.NOTES -> Icons.Default.NoteAlt
+                                    ListSection.TODOS -> Icons.Default.Checklist
+                                    ListSection.DELETED -> Icons.Default.DeleteOutline
+                                },
+                                contentDescription = null
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                Column(
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                if (viewModel.isInFolder) {
+                                    onBack()
+                                } else {
+                                    haptics.tap()
+                                    scope.launch { drawerState.open() }
+                                }
+                            }) {
+                                Icon(
+                                    if (viewModel.isInFolder) Icons.Default.ArrowBack else Icons.Default.Menu,
+                                    contentDescription = if (viewModel.isInFolder) "Back" else "Sections",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            },
-                            leadingIcon = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = onBack) {
-                                        Icon(
-                                            Icons.Default.ArrowBack,
-                                            contentDescription = "Back",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        },
+                        title = {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                SearchBar(
+                                    inputField = {
+                                        SearchBarDefaults.InputField(
+                                            query = searchQuery,
+                                            onQueryChange = { viewModel.onSearchQueryChange(it) },
+                                            onSearch = { },
+                                            expanded = false,
+                                            onExpandedChange = { },
+                                            placeholder = {},
+                                            trailingIcon = {
+                                                Crossfade(
+                                                    targetState = searchQuery.isNotEmpty(),
+                                                    animationSpec = effectsSpec,
+                                                    label = "search_trailing_icon"
+                                                ) { hasQuery ->
+                                                    if (hasQuery) {
+                                                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                                                            Icon(
+                                                                Icons.Default.Close,
+                                                                contentDescription = "Clear search"
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         )
-                                    }
-                                    Icon(
-                                        Icons.Default.Search,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
+                                    },
+                                    expanded = false,
+                                    onExpandedChange = { },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { }
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .offset(y = 6.dp)
+                                            .zIndex(1f)
                                     )
                                 }
-                            },
-                            trailingIcon = {
-                                // Crossfade between the two trailing actions so both always occupy
-                                // the exact same slot as the built-in search-bar chrome — guarantees
-                                // the settings icon is vertically centered exactly like Clear is.
-                                Crossfade(
-                                    targetState = searchQuery.isNotEmpty(),
-                                    animationSpec = effectsSpec,
-                                    label = "search_trailing_icon"
-                                ) { hasQuery ->
-                                    if (hasQuery) {
-                                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                            Icon(Icons.Default.Close, contentDescription = "Clear search")
-                                        }
-                                    } else {
-                                        IconButton(onClick = onSettingsClick) {
-                                            Icon(
-                                                Icons.Default.Settings,
-                                                contentDescription = "Settings",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                }
                             }
-                        )
-                    },
-                    expanded = false,
-                    onExpandedChange = { },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) { }
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = onSettingsClick,
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .offset(y = 6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    )
 
                 Row(
                     modifier = Modifier
@@ -293,74 +369,76 @@ fun NoteListScreen(
                     )
                 }
             }
-        },
-        floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                AnimatedVisibility(
-                    visible = isFabExpanded,
-                    enter = fadeIn(effectsSpec) +
-                        slideInVertically(animationSpec = slideSpec) { it / 2 },
-                    exit = fadeOut(effectsSpec) +
-                        slideOutVertically(animationSpec = slideSpec) { it / 2 }
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 16.dp)
+            },
+            floatingActionButton = {
+            if (!isInTrash) {
+                Column(horizontalAlignment = Alignment.End) {
+                    AnimatedVisibility(
+                        visible = isFabExpanded,
+                        enter = fadeIn(effectsSpec) +
+                            slideInVertically(animationSpec = slideSpec) { it / 2 },
+                        exit = fadeOut(effectsSpec) +
+                            slideOutVertically(animationSpec = slideSpec) { it / 2 }
                     ) {
-                        ExtendedFloatingActionButton(
-                            onClick = { 
-                                isFabExpanded = false
-                                Toast.makeText(context, "To-Do lists coming soon!", Toast.LENGTH_SHORT).show()
-                            },
-                            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = null) },
-                            text = { Text("To-Do list") },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        )
-                        ExtendedFloatingActionButton(
-                            onClick = { 
-                                isFabExpanded = false
-                                showCreateFolderDialog = true 
-                            },
-                            icon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
-                            text = { Text("Folder") },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        )
-                        ExtendedFloatingActionButton(
-                            onClick = {
-                                isFabExpanded = false
-                                onAddNoteClick()
-                            },
-                            icon = { Icon(Icons.Default.NoteAdd, contentDescription = null) },
-                            text = { Text("Note") },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        )
-                    }
-                }
-                FloatingActionButton(
-                    onClick = { isFabExpanded = !isFabExpanded },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    AnimatedContent(
-                        targetState = isFabExpanded,
-                        label = "fab_icon",
-                        transitionSpec = {
-                            (scaleIn(
-                                animationSpec = spatialSpec,
-                                initialScale = 0.6f
-                            ) + fadeIn(effectsSpec)) togetherWith
-                                (scaleOut(
-                                    animationSpec = spatialSpec,
-                                    targetScale = 0.6f
-                                ) + fadeOut(effectsSpec))
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        ) {
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabExpanded = false
+                                    Toast.makeText(context, "To-Do lists coming soon!", Toast.LENGTH_SHORT).show()
+                                },
+                                icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = null) },
+                                text = { Text("To-Do list") },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabExpanded = false
+                                    showCreateFolderDialog = true
+                                },
+                                icon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
+                                text = { Text("Folder") },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabExpanded = false
+                                    onAddNoteClick()
+                                },
+                                icon = { Icon(Icons.Default.NoteAdd, contentDescription = null) },
+                                text = { Text("Note") },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
                         }
-                    ) { expanded ->
-                        Icon(if (expanded) Icons.Default.Close else Icons.Default.Add, contentDescription = "Add")
+                    }
+                    FloatingActionButton(
+                        onClick = { isFabExpanded = !isFabExpanded },
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        AnimatedContent(
+                            targetState = isFabExpanded,
+                            label = "fab_icon",
+                            transitionSpec = {
+                                (scaleIn(
+                                    animationSpec = spatialSpec,
+                                    initialScale = 0.6f
+                                ) + fadeIn(effectsSpec)) togetherWith
+                                    (scaleOut(
+                                        animationSpec = spatialSpec,
+                                        targetScale = 0.6f
+                                    ) + fadeOut(effectsSpec))
+                            }
+                        ) { expanded ->
+                            Icon(if (expanded) Icons.Default.Close else Icons.Default.Add, contentDescription = "Add")
+                        }
                     }
                 }
             }
-        }
-    ) { innerPadding ->
+            }
+        ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -370,8 +448,21 @@ fun NoteListScreen(
                 // Show nothing while loading to avoid flash
             } else if (uiState.notes.isEmpty() && uiState.folders.isEmpty()) {
                 // ── Empty state ──────────────────────────────────────────
+                val showSectionEmptyState = searchQuery.isEmpty() && uiState.dateRangeFilter == null
                 EmptyNotesPlaceholder(
                     isSearching = searchQuery.isNotEmpty() || uiState.dateRangeFilter != null,
+                    title = when {
+                        isInTrash && showSectionEmptyState -> "Trash is empty"
+                        uiState.section == ListSection.TODOS && showSectionEmptyState -> "No to-do notes"
+                        else -> null
+                    },
+                    message = when {
+                        isInTrash && showSectionEmptyState ->
+                            "Notes you delete will appear here"
+                        uiState.section == ListSection.TODOS && showSectionEmptyState ->
+                            "Notes containing to-do checkboxes will appear here"
+                        else -> null
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -404,48 +495,92 @@ fun NoteListScreen(
                         items = uiState.notes,
                         key = { note -> "note_${note.id}" }
                     ) { note ->
-                        SwipeableNoteItem(
-                            note = note,
-                            onClick = { onNoteClick(note) },
-                            onDismiss = { noteToDelete = note },
-                            onDeleteClick = { noteToDelete = note },
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = itemFadeInSpec,
-                                placementSpec = itemPlacementSpec,
-                                fadeOutSpec = itemFadeOutSpec
+                        if (isInTrash) {
+                            TrashNoteItem(
+                                note = note,
+                                onRestore = {
+                                    haptics.confirm()
+                                    viewModel.restoreNote(note)
+                                },
+                                onDeleteForever = { noteToPurge = note },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = itemFadeInSpec,
+                                    placementSpec = itemPlacementSpec,
+                                    fadeOutSpec = itemFadeOutSpec
+                                )
                             )
-                        )
+                        } else {
+                            SwipeableNoteItem(
+                                note = note,
+                                onClick = { onNoteClick(note) },
+                                onDismiss = { noteToDelete = note },
+                                onDeleteClick = { noteToDelete = note },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = itemFadeInSpec,
+                                    placementSpec = itemPlacementSpec,
+                                    fadeOutSpec = itemFadeOutSpec
+                                )
+                            )
+                        }
                     }
                 }
             }
+        }
         }
     }
 
     if (noteToDelete != null) {
         AlertDialog(
             onDismissRequest = { noteToDelete = null },
-            title = { Text("Delete note?") },
-            text = { Text("This note will be permanently deleted.") },
+            title = { Text("Move to trash?") },
+            text = { Text("You can restore it from the Deleted section.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        haptics.reject()
+                        haptics.tap()
                         val note = noteToDelete
                         if (note != null) {
                             viewModel.deleteNote(note)
                             scope.launch {
                                 val result = snackbarHostState.showSnackbar(
-                                    message = "Note deleted",
+                                    message = "Note moved to trash",
                                     actionLabel = "Undo",
                                     duration = SnackbarDuration.Short
                                 )
                                 if (result == SnackbarResult.ActionPerformed) {
                                     haptics.confirm()
-                                    viewModel.undoDelete(note)
+                                    viewModel.restoreNote(note)
                                 }
                             }
                         }
                         noteToDelete = null
+                    }
+                ) {
+                    Text("Move")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { noteToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (noteToPurge != null) {
+        AlertDialog(
+            onDismissRequest = { noteToPurge = null },
+            title = { Text("Delete forever?") },
+            text = { Text("This note will be permanently deleted. This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        haptics.reject()
+                        val note = noteToPurge
+                        if (note != null) {
+                            viewModel.permanentlyDeleteNote(note)
+                        }
+                        noteToPurge = null
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
@@ -455,7 +590,7 @@ fun NoteListScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { noteToDelete = null }) {
+                TextButton(onClick = { noteToPurge = null }) {
                     Text("Cancel")
                 }
             }
