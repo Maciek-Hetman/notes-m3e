@@ -14,4 +14,13 @@ interface NoteRepository {
      * Retrieve all notes from the given data source that belong to a specific folder.
      */
     fun getNotesStreamByFolderId(folderId: Long?): Flow<List<Note>>
+
+    /** Retrieve all soft-deleted (trashed) notes. */
+    fun getDeletedNotesStream(): Flow<List<Note>>
+
+    /** Soft-delete [note]: it stays in the database but is hidden from the main lists. */
+    suspend fun moveToTrash(note: Note)
+
+    /** Bring a trashed note back to the active lists, keeping its content intact. */
+    suspend fun restoreFromTrash(note: Note)
 }

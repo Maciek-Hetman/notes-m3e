@@ -19,7 +19,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NoteAlt
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePickerDialog
@@ -28,6 +32,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -59,8 +64,10 @@ import com.maciejhetman.notes.ui.screens.buildNotePreview
 import com.maciejhetman.notes.ui.theme.LocalAppSettings
 import com.maciejhetman.notes.ui.theme.toComposeFontFamily
 import com.maciejhetman.notes.ui.util.IMAGE_MARKDOWN_REGEX
+import com.maciejhetman.notes.ui.util.confirm
 import com.maciejhetman.notes.ui.util.gestureThresholdActivate
 import com.maciejhetman.notes.ui.util.longPress
+import com.maciejhetman.notes.ui.util.reject
 import com.maciejhetman.notes.ui.util.tap
 import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
 import java.time.Instant
@@ -211,6 +218,183 @@ fun SwipeableNoteItem(
     }
 }
 
+/**
+ * List row for a trashed note: swipe or menu → delete forever, menu → restore.
+ * Tapping the card does nothing; trashed notes are not editable until restored.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TrashNoteItem(
+    note: Note,
+    modifier: Modifier = Modifier,
+    onRestore: () -> Unit,
+    onDeleteForever: () -> Unit
+) {
+    val haptics = LocalHapticFeedback.current
+    var menuExpanded by remember { mutableStateOf(false) }
+    val dismissState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { totalDistance -> totalDistance * 0.7f },
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart ||
+                value == SwipeToDismissBoxValue.StartToEnd) {
+                haptics.gestureThresholdActivate()
+                onDeleteForever()
+            }
+            false // always snap back; deletion is handled by dialog confirmation
+        }
+    )
+
+    val shape = RoundedCornerShape(16.dp)
+    val appSettings = LocalAppSettings.current
+    val fontFamily = appSettings.fontFamily.toComposeFontFamily()
+
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        backgroundContent = {
+            val color by animateColorAsState(
+                targetValue = when (dismissState.targetValue) {
+                    SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.surfaceVariant
+                    else -> MaterialTheme.colorScheme.errorContainer
+                },
+                animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                label = "trash_swipe_bg"
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(shape)
+                    .background(color),
+                contentAlignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd)
+                    Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                Icon(
+                    Icons.Default.DeleteForever,
+                    contentDescription = "Delete forever",
+                    tint = if (dismissState.targetValue == SwipeToDismissBoxValue.Settled)
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else
+                        MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+        }
+    ) {
+        Box(modifier = Modifier) {
+            Card(
+                shape = shape,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = note.title.ifEmpty { "Untitled" },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = fontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = formatTimestamp(note.modifiedAt),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        if (note.content.isNotBlank()) {
+                            val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+                            val cleanContent = remember(note.content, codeBackground) {
+                                buildNotePreview(note.content, codeBackground)
+                            }
+                            if (cleanContent.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = cleanContent,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = fontFamily,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    lineHeight = 20.sp
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = {
+                        haptics.tap()
+                        menuExpanded = true
+                    }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Trash options",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Restore") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.RestoreFromTrash,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    onClick = {
+                        haptics.confirm()
+                        menuExpanded = false
+                        onRestore()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete forever") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.DeleteForever,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    onClick = {
+                        haptics.reject()
+                        menuExpanded = false
+                        onDeleteForever()
+                    }
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteItem(
@@ -345,7 +529,9 @@ fun NoteItem(
 @Composable
 fun EmptyNotesPlaceholder(
     isSearching: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    message: String? = null
 ) {
     Column(
         modifier = modifier,
@@ -362,7 +548,7 @@ fun EmptyNotesPlaceholder(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.NoteAlt,
+                imageVector = if (title == null) Icons.Default.NoteAlt else Icons.Default.DeleteOutline,
                 contentDescription = null,
                 modifier = Modifier.size(52.dp),
                 tint = MaterialTheme.colorScheme.primary
@@ -370,14 +556,14 @@ fun EmptyNotesPlaceholder(
         }
         Spacer(Modifier.height(24.dp))
         Text(
-            text = if (isSearching) "No notes found" else "Your notes will appear here",
+            text = title ?: if (isSearching) "No notes found" else "Your notes will appear here",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = if (isSearching) "Try a different search term"
+            text = message ?: if (isSearching) "Try a different search term"
                    else "Tap the + button to create your first note",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

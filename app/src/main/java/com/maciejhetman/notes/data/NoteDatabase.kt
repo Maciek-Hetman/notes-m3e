@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Note::class, Folder::class], version = 3, exportSchema = true)
+@Database(entities = [Note::class, Folder::class], version = 4, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun folderDao(): FolderDao
@@ -15,6 +15,13 @@ abstract class NoteDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var Instance: NoteDatabase? = null
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Soft delete: NULL = active note, otherwise the trash timestamp.
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `deletedAt` INTEGER")
+            }
+        }
 
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -50,7 +57,7 @@ abstract class NoteDatabase : RoomDatabase() {
                 // The next version bump must ship a real Migration; the v1→v2 change
                 // shipped without one, so that history is unrecoverable retroactively.
                 Room.databaseBuilder(context, NoteDatabase::class.java, "note_database")
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { Instance = it }

@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.update
 
 /**
  * In-memory [NoteRepository] for JVM tests. Mirrors Room semantics: inserting a note with
- * `id = 0` auto-generates an id, inserting with a non-zero id keeps it (undo-delete),
- * and every mutation re-emits on the open flows.
+ * `id = 0` auto-generates an id, inserting with a non-zero id keeps it, active-note streams
+ * exclude trashed notes (`deletedAt != null`), and every mutation re-emits on the open flows.
  */
 class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepository {
 
@@ -19,6 +19,8 @@ class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepositor
 
     val insertedNotes = mutableListOf<Note>()
     val updatedNotes = mutableListOf<Note>()
+    val trashedNotes = mutableListOf<Note>()
+    val restoredNotes = mutableListOf<Note>()
     val deletedNotes = mutableListOf<Note>()
 
     var lastSearchQuery: String? = null
@@ -26,8 +28,11 @@ class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepositor
 
     override fun getAllNotesStream(): Flow<List<Note>> = notes
 
+    override fun getDeletedNotesStream(): Flow<List<Note>> =
+        notes.map { list -> list.filter { it.deletedAt != null } }
+
     override fun getNotesStreamByFolderId(folderId: Long?): Flow<List<Note>> =
-        notes.map { list -> list.filter { it.folderId == folderId } }
+        notes.map { list -> list.filter { it.folderId == folderId && it.deletedAt == null } }
 
     override fun getNoteStream(id: Long): Flow<Note?> =
         notes.map { list -> list.firstOrNull { it.id == id } }
@@ -50,12 +55,32 @@ class FakeNoteRepository(initialNotes: List<Note> = emptyList()) : NoteRepositor
         notes.update { list -> list.map { if (it.id == note.id) note else it } }
     }
 
+    override suspend fun moveToTrash(note: Note) {
+        trashedNotes += note
+        notes.update { list ->
+            list.map {
+                if (it.id == note.id) it.copy(deletedAt = System.currentTimeMillis()) else it
+            }
+        }
+    }
+
+    override suspend fun restoreFromTrash(note: Note) {
+        restoredNotes += note
+        notes.update { list ->
+            list.map {
+                if (it.id == note.id) it.copy(deletedAt = null) else it
+            }
+        }
+    }
+
     override fun searchNotes(query: String): Flow<List<Note>> {
         lastSearchQuery = query
         return notes.map { list ->
             list.filter {
-                it.title.contains(query, ignoreCase = true) ||
-                    it.content.contains(query, ignoreCase = true)
+                it.deletedAt == null && (
+                    it.title.contains(query, ignoreCase = true) ||
+                        it.content.contains(query, ignoreCase = true)
+                    )
             }
         }
     }

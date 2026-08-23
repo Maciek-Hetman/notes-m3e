@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -27,37 +28,59 @@ class NoteListViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private val _section = MutableStateFlow(ListSection.NOTES)
+
     private val _sortOption = MutableStateFlow(SortOption.MODIFIED_NEWEST)
 
     private val _dateRangeFilter = MutableStateFlow<DateRangeFilter?>(null)
 
+    /** Whether this list is scoped to a folder (drives back-arrow vs menu icon in the top bar). */
+    val isInFolder: Boolean
+        get() = folderId != null
+
+    private data class SectionQuery(val section: ListSection, val query: String)
+
+    private val sectionAndQuery = combine(_section, _searchQuery, ::SectionQuery)
+
     val notesUiState: StateFlow<NoteListUiState> = combine(
-        _searchQuery.flatMapLatest { query ->
-            if (query.isEmpty()) {
-                repository.getNotesStreamByFolderId(folderId)
-            } else {
-                repository.searchNotes(query)
+        sectionAndQuery.flatMapLatest { (section, query) ->
+            when (section) {
+                ListSection.DELETED -> repository.getDeletedNotesStream()
+                else -> if (query.isEmpty()) {
+                    repository.getNotesStreamByFolderId(folderId)
+                } else {
+                    repository.searchNotes(query)
+                }
             }
         },
-        _searchQuery.flatMapLatest { query ->
-            if (query.isEmpty()) {
+        sectionAndQuery.flatMapLatest { (section, query) ->
+            if (section == ListSection.NOTES && query.isEmpty()) {
                 folderRepository.getSubfoldersStream(folderId)
             } else {
-                kotlinx.coroutines.flow.flowOf(emptyList())
+                flowOf(emptyList())
             }
         },
         _sortOption,
-        _dateRangeFilter
-    ) { notes, folders, sortOption, dateFilter ->
-        val filtered = dateFilter?.let { filter ->
+        _dateRangeFilter,
+        sectionAndQuery
+    ) { notes, folders, sortOption, dateFilter, (section, query) ->
+        val dateFiltered = dateFilter?.let { filter ->
             notes.filter { it.createdAt in filter.startInclusive..filter.endInclusive }
         } ?: notes
+        val visible = when (section) {
+            ListSection.DELETED ->
+                if (query.isEmpty()) dateFiltered
+                else dateFiltered.filter { matchesQuery(it, query) }
+            ListSection.TODOS -> dateFiltered.filter { it.content.contains(TODO_LINE_REGEX) }
+            ListSection.NOTES -> dateFiltered
+        }
         NoteListUiState(
             isLoading = false,
             folders = folders,
-            notes = filtered.sortedWith(sortOption.comparator),
+            notes = visible.sortedWith(sortOption.comparator),
             sortOption = sortOption,
-            dateRangeFilter = dateFilter
+            dateRangeFilter = dateFilter,
+            section = section
         )
     }.stateIn(
         scope = viewModelScope,
@@ -67,6 +90,10 @@ class NoteListViewModel(
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
+    }
+
+    fun onSectionChange(section: ListSection) {
+        _section.value = section
     }
 
     fun onSortOptionChange(option: SortOption) {
@@ -84,19 +111,29 @@ class NoteListViewModel(
     fun deleteNote(note: Note) {
         viewModelScope.launch {
             try {
-                repository.deleteNote(note)
+                repository.moveToTrash(note)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete note", e)
+                Log.e(TAG, "Failed to move note to trash", e)
             }
         }
     }
 
-    fun undoDelete(note: Note) {
+    fun restoreNote(note: Note) {
         viewModelScope.launch {
             try {
-                repository.insertNote(note)
+                repository.restoreFromTrash(note)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to undo delete", e)
+                Log.e(TAG, "Failed to restore note", e)
+            }
+        }
+    }
+
+    fun permanentlyDeleteNote(note: Note) {
+        viewModelScope.launch {
+            try {
+                repository.deleteNote(note)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to permanently delete note", e)
             }
         }
     }
@@ -123,7 +160,21 @@ class NoteListViewModel(
 
     companion object {
         private const val TAG = "NoteListViewModel"
+
+        /** Markdown todo markers at line starts: `- [ ] `, `- [x] `, `* [X]`, etc. */
+        val TODO_LINE_REGEX = Regex("(?m)^\\s*[-*]\\s*\\[[ xX]\\]")
+
+        private fun matchesQuery(note: Note, query: String): Boolean =
+            note.title.contains(query, ignoreCase = true) ||
+                note.content.contains(query, ignoreCase = true)
     }
+}
+
+/** Top-level list sections surfaced in the home-screen menu. */
+enum class ListSection(val label: String) {
+    NOTES("Notes"),
+    TODOS("To-dos"),
+    DELETED("Deleted")
 }
 
 enum class SortOption(val label: String, val comparator: Comparator<Note>) {
@@ -145,5 +196,6 @@ data class NoteListUiState(
     val folders: List<Folder> = emptyList(),
     val notes: List<Note> = emptyList(),
     val sortOption: SortOption = SortOption.MODIFIED_NEWEST,
-    val dateRangeFilter: DateRangeFilter? = null
+    val dateRangeFilter: DateRangeFilter? = null,
+    val section: ListSection = ListSection.NOTES
 )

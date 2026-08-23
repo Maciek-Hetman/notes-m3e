@@ -5,6 +5,7 @@ import com.maciejhetman.notes.fakes.FakeNoteRepository
 import com.maciejhetman.notes.fakes.FakeFolderRepository
 import com.maciejhetman.notes.testutil.MainDispatcherRule
 import com.maciejhetman.notes.ui.viewmodel.DateRangeFilter
+import com.maciejhetman.notes.ui.viewmodel.ListSection
 import com.maciejhetman.notes.ui.viewmodel.NoteListViewModel
 import com.maciejhetman.notes.ui.viewmodel.SortOption
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -128,7 +129,7 @@ class NoteListViewModelTest {
     }
 
     @Test
-    fun `delete then undo re-inserts the note`() = runTest(testDispatcher) {
+    fun `delete moves note to trash and undo restores it`() = runTest(testDispatcher) {
         val victim = note(5, title = "doomed")
         val repository = FakeNoteRepository(listOf(note(4, title = "safe"), victim))
         val viewModel = NoteListViewModel(repository, FakeFolderRepository())
@@ -139,14 +140,86 @@ class NoteListViewModelTest {
         viewModel.deleteNote(victim)
         advanceUntilIdle()
 
-        assertEquals(listOf(victim), repository.deletedNotes)
+        assertEquals(listOf(5L), repository.trashedNotes.map { it.id })
         assertEquals(listOf(4L), viewModel.notesUiState.value.notes.map { it.id })
 
-        viewModel.undoDelete(victim)
+        viewModel.restoreNote(victim)
         advanceUntilIdle()
 
-        assertEquals(1, repository.insertedNotes.size)
-        assertEquals(victim, repository.insertedNotes.single())
+        assertEquals(listOf(5L), repository.restoredNotes.map { it.id })
         assertEquals(setOf(4L, 5L), viewModel.notesUiState.value.notes.map { it.id }.toSet())
     }
+
+    @Test
+    fun `permanently delete removes the note entirely`() = runTest(testDispatcher) {
+        val victim = note(5, title = "doomed")
+        val repository = FakeNoteRepository(listOf(note(4, title = "safe"), victim))
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+
+        viewModel.permanentlyDeleteNote(victim)
+        advanceUntilIdle()
+
+        assertEquals(listOf(5L), repository.deletedNotes.map { it.id })
+        assertEquals(listOf(4L), viewModel.notesUiState.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `to-do section shows only notes containing todo markers`() = runTest(testDispatcher) {
+        val repository = FakeNoteRepository(
+            listOf(
+                note(1, title = "plain", content = "just text"),
+                note(2, title = "shopping", content = "- [ ] milk"),
+                note(3, title = "done", content = "* [X] walk the dog")
+            )
+        )
+        val viewModel = NoteListViewModel(repository, FakeFolderRepository())
+        backgroundScope.launch { viewModel.notesUiState.collect { } }
+        advanceUntilIdle()
+        assertEquals(3, viewModel.notesUiState.value.notes.size)
+
+        viewModel.onSectionChange(ListSection.TODOS)
+        advanceUntilIdle()
+
+        assertEquals(ListSection.TODOS, viewModel.notesUiState.value.section)
+        assertEquals(listOf(2L, 3L), viewModel.notesUiState.value.notes.map { it.id })
+
+        viewModel.onSectionChange(ListSection.NOTES)
+        advanceUntilIdle()
+
+        assertEquals(3, viewModel.notesUiState.value.notes.size)
+    }
+
+    @Test
+    fun `deleted section lists only trashed notes and search filters within it`() =
+        runTest(testDispatcher) {
+            val trashed = note(1, title = "old plan", content = "- [ ] nothing left")
+            val active = note(2, title = "current")
+            val repository = FakeNoteRepository(listOf(trashed, active))
+            val viewModel = NoteListViewModel(repository, FakeFolderRepository())
+            backgroundScope.launch { viewModel.notesUiState.collect { } }
+            advanceUntilIdle()
+
+            viewModel.deleteNote(trashed)
+            viewModel.onSectionChange(ListSection.DELETED)
+            advanceUntilIdle()
+
+            assertEquals(ListSection.DELETED, viewModel.notesUiState.value.section)
+            assertEquals(listOf(1L), viewModel.notesUiState.value.notes.map { it.id })
+
+            // Search inside trash matches on title/content client-side.
+            viewModel.onSearchQueryChange("plan")
+            advanceUntilIdle()
+            assertEquals(listOf(1L), viewModel.notesUiState.value.notes.map { it.id })
+
+            viewModel.onSearchQueryChange("current")
+            advanceUntilIdle()
+            assertEquals(emptyList<Long>(), viewModel.notesUiState.value.notes.map { it.id })
+
+            // Active notes never leak into the Deleted section.
+            viewModel.onSectionChange(ListSection.NOTES)
+            advanceUntilIdle()
+            assertEquals(listOf(2L), viewModel.notesUiState.value.notes.map { it.id })
+        }
 }
