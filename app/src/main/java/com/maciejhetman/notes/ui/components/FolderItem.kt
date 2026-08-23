@@ -60,7 +60,7 @@ fun FolderItem(
         Card(
             shape = shape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
             ),
             modifier = Modifier
                 .fillMaxWidth()

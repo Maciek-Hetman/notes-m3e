@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
@@ -71,7 +72,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import android.widget.Toast
-import androidx.compose.ui.zIndex
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -185,7 +185,7 @@ fun NoteListScreen(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 Column(
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     TopAppBar(
                         navigationIcon = {
@@ -205,60 +205,48 @@ fun NoteListScreen(
                             }
                         },
                         title = {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                SearchBar(
-                                    inputField = {
-                                        SearchBarDefaults.InputField(
-                                            query = searchQuery,
-                                            onQueryChange = { viewModel.onSearchQueryChange(it) },
-                                            onSearch = { },
-                                            expanded = false,
-                                            onExpandedChange = { },
-                                            placeholder = {},
-                                            trailingIcon = {
-                                                Crossfade(
-                                                    targetState = searchQuery.isNotEmpty(),
-                                                    animationSpec = effectsSpec,
-                                                    label = "search_trailing_icon"
-                                                ) { hasQuery ->
-                                                    if (hasQuery) {
-                                                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                                            Icon(
-                                                                Icons.Default.Close,
-                                                                contentDescription = "Clear search"
-                                                            )
-                                                        }
+                            SearchBar(
+                                inputField = {
+                                    SearchBarDefaults.InputField(
+                                        query = searchQuery,
+                                        onQueryChange = {
+                                            viewModel.onSearchQueryChange(it)
+                                        },
+                                        onSearch = { },
+                                        expanded = false,
+                                        onExpandedChange = { },
+                                        placeholder = { Text("Search notes") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Search, contentDescription = null)
+                                        },
+                                        trailingIcon = {
+                                            Crossfade(
+                                                targetState = searchQuery.isNotEmpty(),
+                                                animationSpec = effectsSpec,
+                                                label = "search_trailing_icon"
+                                            ) { hasQuery ->
+                                                if (hasQuery) {
+                                                    IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                                                        Icon(
+                                                            Icons.Default.Close,
+                                                            contentDescription = "Clear search"
+                                                        )
                                                     }
                                                 }
                                             }
-                                        )
-                                    },
-                                    expanded = false,
-                                    onExpandedChange = { },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { }
-                                if (searchQuery.isEmpty()) {
-                                    Text(
-                                        text = "Search",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .offset(y = 6.dp)
-                                            .zIndex(1f)
+                                        }
                                     )
-                                }
-                            }
+                                },
+                                expanded = false,
+                                onExpandedChange = { },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { }
                         },
                         actions = {
                             IconButton(
                                 onClick = onSettingsClick,
                                 modifier = Modifier
                                     .padding(end = 4.dp)
-                                    .offset(y = 6.dp)
                             ) {
                                 Icon(
                                     Icons.Default.Settings,
@@ -274,7 +262,7 @@ fun NoteListScreen(
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp),
+                        .padding(bottom = 0.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box {
@@ -415,7 +403,9 @@ fun NoteListScreen(
                         }
                     }
                     FloatingActionButton(
-                        onClick = { isFabExpanded = !isFabExpanded },
+                        onClick = {
+                            isFabExpanded = !isFabExpanded
+                        },
                         containerColor = MaterialTheme.colorScheme.primaryContainer
                     ) {
                         AnimatedContent(
@@ -469,11 +459,32 @@ fun NoteListScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        top = 8.dp,
+                        top = 0.dp,
                         bottom = 120.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (viewModel.isInFolder) "Folder notes" else uiState.section.label,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "${uiState.folders.size + uiState.notes.size}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     items(
                         items = uiState.folders,
                         key = { folder -> "folder_${folder.id}" }
@@ -676,4 +687,5 @@ fun NoteListScreen(
         )
     }
 }
+
 

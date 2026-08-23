@@ -286,7 +286,7 @@ fun TrashNoteItem(
             Card(
                 shape = shape,
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -420,7 +420,7 @@ fun NoteItem(
         Card(
             shape = shape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
             ),
             modifier = Modifier
                 .fillMaxWidth()
