@@ -9,8 +9,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -53,7 +51,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -66,9 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.maciejhetman.notes.navigation.LocalNavAnimatedVisibilityScope
-import com.maciejhetman.notes.navigation.LocalSharedTransitionScope
-import com.maciejhetman.notes.ui.animation.Motion
 import com.maciejhetman.notes.ui.components.MarkdownToolbar
 import com.maciejhetman.notes.ui.components.NoteContentEditor
 import com.maciejhetman.notes.ui.components.buildInsertedValue
@@ -87,7 +81,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun NoteDetailScreen(
     viewModel: NoteDetailViewModel,
@@ -268,32 +261,7 @@ fun NoteDetailScreen(
 
     // ── UI ─────────────────────────────────────────────────────────────────
 
-    val sharedTransitionScope = LocalSharedTransitionScope.current
-    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
-
-    val sharedBoundsTransform = Motion.DefaultBoundsTransform
-
-    // Single container transform — the ONLY shared element. Nesting child morphs (title/date/
-    // content) inside the container morph makes the overlay stretch one copy of the text while
-    // the children fly separately, which reads as doubled, grotesquely scaled ghost text.
-    // ScaleToBounds avoids per-frame remeasure of the full editor during the morph / predictive
-    // back seek (RemeasureToBounds was a measured jank hotspot).
-    val sharedElementModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedBounds(
-                rememberSharedContentState(key = "note_${uiState.id}"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                boundsTransform = sharedBoundsTransform,
-                resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(
-                    contentScale = ContentScale.FillWidth,
-                    alignment = Alignment.TopStart
-                )
-            )
-        }
-    } else Modifier
-
     Scaffold(
-        modifier = sharedElementModifier,
         floatingActionButton = {
             MarkdownToolbar(
                 onInsert = { syntax ->
